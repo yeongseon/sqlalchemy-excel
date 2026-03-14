@@ -10,6 +10,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from sqlalchemy_excel._compat import sanitize_cell_value
 from sqlalchemy_excel.exceptions import ExportError
 
 if TYPE_CHECKING:
@@ -165,5 +166,10 @@ class ExcelExporter:
             The extracted value.
         """
         if isinstance(row, dict):
-            return row.get(column_name)
-        return getattr(row, column_name, None)
+            value = row.get(column_name)
+        else:
+            value = getattr(row, column_name, None)
+
+        if isinstance(value, str):
+            return sanitize_cell_value(value)
+        return value

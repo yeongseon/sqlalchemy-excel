@@ -76,7 +76,9 @@ class PydanticBackend:
                 value = row.get(column_name)
                 expected_type = _expected_type(column)
                 error_type = str(issue.get("type", ""))
-                error_code = _map_error_code(error_type=error_type, value=value, column=column)
+                error_code = _map_error_code(
+                    error_type=error_type, value=value, column=column
+                )
                 errors.append(
                     CellError(
                         row=row_number,
@@ -175,17 +177,7 @@ def _field_type_for_column(column: ColumnMapping) -> object:
     """Resolve dynamic Pydantic field type for a column mapping."""
 
     if column.enum_values:
-        if len(column.enum_values) == 1:
-            value0 = column.enum_values[0]
-            field_type: object = Literal[value0]
-        elif len(column.enum_values) == 2:
-            value0, value1 = column.enum_values
-            field_type = Literal[value0, value1]
-        elif len(column.enum_values) == 3:
-            value0, value1, value2 = column.enum_values
-            field_type = Literal[value0, value1, value2]
-        else:
-            field_type = str
+        field_type = cast("object", Literal[tuple(column.enum_values)])
     else:
         field_type = column.python_type
 
@@ -212,7 +204,9 @@ def _expected_type(column: ColumnMapping | None) -> str:
     return expected
 
 
-def _map_error_code(*, error_type: str, value: object, column: ColumnMapping | None) -> str:
+def _map_error_code(
+    *, error_type: str, value: object, column: ColumnMapping | None
+) -> str:
     """Map Pydantic error details to project-level error codes."""
 
     if value is None and column is not None and not column.nullable:

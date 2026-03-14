@@ -101,7 +101,9 @@ def test_pipeline_template_to_bytesio() -> None:
 
     workbook = load_workbook(stream)
     worksheet = workbook[mapping.sheet_name]
-    actual_headers = [worksheet.cell(row=1, column=index).value for index in range(1, 5)]
+    actual_headers = [
+        worksheet.cell(row=1, column=index).value for index in range(1, 5)
+    ]
     expected_headers = [column.excel_header for column in mapping.columns]
     assert actual_headers == expected_headers
 
@@ -119,7 +121,10 @@ def test_pipeline_multiple_models(tmp_path: Path) -> None:
     ExcelTemplate([user_mapping, department_mapping]).save(template_path)
     workbook = load_workbook(template_path)
 
-    assert workbook.sheetnames == [user_mapping.sheet_name, department_mapping.sheet_name]
+    assert workbook.sheetnames == [
+        user_mapping.sheet_name,
+        department_mapping.sheet_name,
+    ]
     assert len(workbook.worksheets) == 2
 
 

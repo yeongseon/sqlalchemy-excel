@@ -184,3 +184,54 @@ def test_validation_report_to_excel(tmp_path: Path) -> None:
         "Input should be a valid integer",
         "type_error",
     ]
+
+
+def test_validation_report_to_excel_sanitizes_formula_values(tmp_path: Path) -> None:
+    report = ValidationReport(
+        errors=[
+            CellError(
+                row=2,
+                column="name",
+                value="=CMD()",
+                expected_type="str",
+                message="bad",
+                error_code="constraint_error",
+            ),
+            CellError(
+                row=3,
+                column="name",
+                value="+1",
+                expected_type="str",
+                message="bad",
+                error_code="constraint_error",
+            ),
+            CellError(
+                row=4,
+                column="name",
+                value="-1",
+                expected_type="str",
+                message="bad",
+                error_code="constraint_error",
+            ),
+            CellError(
+                row=5,
+                column="name",
+                value="@SUM",
+                expected_type="str",
+                message="bad",
+                error_code="constraint_error",
+            ),
+        ],
+        total_rows=4,
+        valid_rows=0,
+        invalid_rows=4,
+    )
+    output_path = tmp_path / "sanitized_validation_report.xlsx"
+
+    report.to_excel(output_path)
+
+    worksheet = load_workbook(output_path)["Validation Errors"]
+    assert worksheet.cell(row=2, column=3).value == "'=CMD()"
+    assert worksheet.cell(row=3, column=3).value == "'+1"
+    assert worksheet.cell(row=4, column=3).value == "'-1"
+    assert worksheet.cell(row=5, column=3).value == "'@SUM"

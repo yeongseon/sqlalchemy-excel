@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
 
 def ensure_defusedxml() -> None:
     """Ensure defusedxml is installed for safe XML processing.
@@ -44,3 +46,18 @@ def import_optional(
             f"{module_name} is required for this feature. "
             f"Install it with: pip install sqlalchemy-excel[{extra_name}]"
         ) from e
+
+
+def sanitize_cell_value(value: str) -> str:
+    """Sanitize a string so Excel does not interpret it as a formula.
+
+    Args:
+        value: Raw string cell value.
+
+    Returns:
+        The original value or a single-quote-prefixed safe value.
+    """
+
+    if value.startswith(_FORMULA_PREFIXES):
+        return f"'{value}"
+    return value

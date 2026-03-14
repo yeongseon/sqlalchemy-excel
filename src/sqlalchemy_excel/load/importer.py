@@ -14,6 +14,7 @@ from sqlalchemy_excel.load.strategies import (
     LoadStrategy,
     UpsertStrategy,
 )
+from sqlalchemy_excel.reader.base import normalize_header
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -263,7 +264,7 @@ class ExcelImporter:
                 + "Implement sqlalchemy_excel.reader.openpyxl_reader first."
             ) from exc
 
-        reader = OpenpyxlReader()
+        reader = OpenpyxlReader(read_only=True)
         return cast("_ReaderLike", cast("object", reader))
 
     def _extract_rows_for_mapping(
@@ -304,12 +305,18 @@ class ExcelImporter:
             Row dictionary keyed by ORM column names.
         """
 
+        normalized_row = {
+            normalize_header(key): value for key, value in row.items() if key
+        }
+
         aligned: RowDict = {}
         for column in mapping.columns:
-            if column.name in row:
-                aligned[column.name] = row[column.name]
+            normalized_column_name = normalize_header(column.name)
+            normalized_excel_header = normalize_header(column.excel_header)
+            if normalized_column_name in normalized_row:
+                aligned[column.name] = normalized_row[normalized_column_name]
             else:
-                aligned[column.name] = row.get(column.excel_header)
+                aligned[column.name] = normalized_row.get(normalized_excel_header)
         return aligned
 
     @staticmethod

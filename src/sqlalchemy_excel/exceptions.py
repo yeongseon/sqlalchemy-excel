@@ -36,8 +36,7 @@ class SheetNotFoundError(ReaderError):
         self.sheet_name = sheet_name
         self.available = available
         super().__init__(
-            f"Sheet '{sheet_name}' not found. "
-            f"Available sheets: {', '.join(available)}"
+            f"Sheet '{sheet_name}' not found. Available sheets: {', '.join(available)}"
         )
 
 

@@ -130,7 +130,9 @@ class OpenpyxlReader:
                 f"File size ({size:,} bytes) exceeds maximum ({self.max_file_size:,} bytes)"
             )
 
-    def _select_worksheet(self, workbook: Workbook, sheet_name: str | None) -> WorksheetLike:
+    def _select_worksheet(
+        self, workbook: Workbook, sheet_name: str | None
+    ) -> WorksheetLike:
         if sheet_name is None:
             selected = workbook.active
         else:
@@ -144,13 +146,17 @@ class OpenpyxlReader:
 
         return selected
 
-    def _resolve_header_row(self, worksheet: WorksheetLike, header_row: int | None) -> int:
+    def _resolve_header_row(
+        self, worksheet: WorksheetLike, header_row: int | None
+    ) -> int:
         if header_row is not None:
             if header_row < 1:
                 raise ReaderError("header_row must be a positive 1-based index")
             return header_row
 
-        for row_index, values in enumerate(worksheet.iter_rows(values_only=True), start=1):
+        for row_index, values in enumerate(
+            worksheet.iter_rows(values_only=True), start=1
+        ):
             if any(not self._is_empty_cell(value) for value in values):
                 return row_index
 
@@ -177,7 +183,9 @@ class OpenpyxlReader:
             raise ReaderError(f"Header row {header_row} does not contain any values")
 
         headers: list[str] = []
-        for column_index, value in enumerate(header_values[:last_header_index], start=1):
+        for column_index, value in enumerate(
+            header_values[:last_header_index], start=1
+        ):
             text = "" if value is None else str(value)
             normalized = normalize_header(text)
             if not normalized:
@@ -185,7 +193,9 @@ class OpenpyxlReader:
                     f"Header value is empty after normalization at column {column_index}"
                 )
             if normalized in headers:
-                raise ReaderError(f"Duplicate normalized header detected: '{normalized}'")
+                raise ReaderError(
+                    f"Duplicate normalized header detected: '{normalized}'"
+                )
             headers.append(normalized)
 
         return headers

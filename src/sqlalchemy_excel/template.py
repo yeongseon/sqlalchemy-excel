@@ -13,6 +13,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
+from sqlalchemy_excel._compat import sanitize_cell_value
 from sqlalchemy_excel.exceptions import TemplateError
 
 if TYPE_CHECKING:
@@ -34,6 +35,7 @@ HEADER_BORDER = Border(
     bottom=Side(style="thin", color="D9D9D9"),
 )
 _MAX_EXCEL_ROWS = 1_048_576
+_MAX_EXCEL_DATA_VALIDATION_FORMULA_LENGTH = 255
 _WIDTH_PADDING = 2
 CellValue = str | int | float | bool | date | datetime | None
 
@@ -182,6 +184,18 @@ class ExcelTemplate:
 
         escaped_values = [value.replace('"', '""') for value in values]
         formula = f'"{",".join(escaped_values)}"'
+        if len(formula) > _MAX_EXCEL_DATA_VALIDATION_FORMULA_LENGTH:
+            header_cell = worksheet.cell(row=1, column=index)
+            note = (
+                "Dropdown omitted: enum list exceeds Excel data-validation "
+                "255-character limit."
+            )
+            existing_comment = (
+                header_cell.comment.text if header_cell.comment is not None else ""
+            )
+            comment_text = f"{existing_comment}, {note}" if existing_comment else note
+            header_cell.comment = Comment(comment_text, "sqlalchemy-excel")
+            return
 
         validation = DataValidation(
             type="list",
@@ -208,7 +222,7 @@ class ExcelTemplate:
 
     def _sample_value(self, column: ColumnMapping) -> CellValue:
         if column.enum_values:
-            return column.enum_values[0]
+            return sanitize_cell_value(column.enum_values[0])
 
         py_type = column.python_type
 
@@ -217,7 +231,7 @@ class ExcelTemplate:
         if py_type is float:
             return 1.0
         if py_type is str:
-            return "sample"
+            return sanitize_cell_value("sample")
         if py_type is bool:
             return True
         if py_type is date:

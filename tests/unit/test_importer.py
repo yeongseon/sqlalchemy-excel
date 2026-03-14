@@ -19,7 +19,9 @@ ImportResult = _sqlalchemy_excel.ImportResult
 _sqlalchemy_excel_exceptions = importlib.import_module("sqlalchemy_excel.exceptions")
 ImportError_ = _sqlalchemy_excel_exceptions.ImportError_
 
-_sqlalchemy_excel_strategies = importlib.import_module("sqlalchemy_excel.load.strategies")
+_sqlalchemy_excel_strategies = importlib.import_module(
+    "sqlalchemy_excel.load.strategies"
+)
 DryRunStrategy = _sqlalchemy_excel_strategies.DryRunStrategy
 InsertStrategy = _sqlalchemy_excel_strategies.InsertStrategy
 UpsertStrategy = _sqlalchemy_excel_strategies.UpsertStrategy
@@ -204,7 +206,9 @@ def test_upsert_mixed(session) -> None:
 
     by_id = {
         user.id: user
-        for user in session.execute(select(SimpleUser).order_by(SimpleUser.id)).scalars().all()
+        for user in session.execute(select(SimpleUser).order_by(SimpleUser.id))
+        .scalars()
+        .all()
     }
     assert result.inserted == 1
     assert result.updated == 1
@@ -310,3 +314,52 @@ def test_importer_insert_skip_validation(tmp_path: Path, session, engine) -> Non
     assert result.inserted == 1
     assert result.failed == 0
     assert session.query(SimpleUser).count() == 1
+
+
+def test_upsert_missing_key_column_records_failure(session) -> None:
+    strategy = UpsertStrategy()
+    rows = [
+        {"name": "Missing Id", "email": "missing@example.com", "age": 31},
+        {"id": 2, "name": "Valid", "email": "valid@example.com", "age": 30},
+    ]
+
+    result = strategy.execute(
+        session=session,
+        model_class=SimpleUser,
+        rows=rows,
+        key_columns=["id"],
+        batch_size=100,
+    )
+
+    assert result.failed == 1
+    assert result.inserted == 1
+    assert any("Missing upsert key column(s): id" in error for error in result.errors)
+
+
+def test_importer_aligns_special_headers_by_normalization(
+    tmp_path: Path, session
+) -> None:
+    mapping = ExcelMapping.from_model(SimpleUser)
+    importer = ExcelImporter([mapping], session)
+    source = tmp_path / "users_special_headers.xlsx"
+    _create_test_xlsx(
+        source,
+        headers=["ID", "Name!!!", "Email@", "Age($)"],
+        rows=[[1, "Alice", "alice@example.com", 30]],
+    )
+
+    result = importer.insert(source, validate=False)
+
+    assert result.failed == 0
+    assert result.inserted == 1
+    saved = session.execute(select(SimpleUser).where(SimpleUser.id == 1)).scalar_one()
+    assert saved.name == "Alice"
+
+
+def test_importer_create_reader_uses_read_only(session) -> None:
+    mapping = ExcelMapping.from_model(SimpleUser)
+    importer = ExcelImporter([mapping], session)
+
+    reader = importer._create_reader()
+
+    assert reader.read_only is True

@@ -157,14 +157,18 @@ class ExcelMapping:
         selected_names = {column.name for column in filtered_columns}
         resolved_keys: list[str]
         if key_columns is None:
-            resolved_keys = [column.name for column in filtered_columns if column.primary_key]
+            resolved_keys = [
+                column.name for column in filtered_columns if column.primary_key
+            ]
         else:
             resolved_keys = list(key_columns)
 
         missing_keys = [name for name in resolved_keys if name not in selected_names]
         if missing_keys:
             missing = ", ".join(missing_keys)
-            raise MappingError(f"Unknown key columns for model {model.__name__!r}: {missing}")
+            raise MappingError(
+                f"Unknown key columns for model {model.__name__!r}: {missing}"
+            )
 
         resolved_sheet_name = sheet_name
         if resolved_sheet_name is None:
@@ -224,7 +228,9 @@ def _column_to_mapping(
 
 def _python_type_for_sqla_type(sqla_type: TypeEngine[object]) -> type[object]:
     if isinstance(sqla_type, Numeric):
-        as_decimal = cast("bool", getattr(cast("object", sqla_type), "asdecimal", False))
+        as_decimal = cast(
+            "bool", getattr(cast("object", sqla_type), "asdecimal", False)
+        )
         return Decimal if as_decimal else float
 
     for sa_type, py_type in _TYPE_MAP:

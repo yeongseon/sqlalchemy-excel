@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any, cast
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill
 
+from sqlalchemy_excel._compat import sanitize_cell_value
+
 if TYPE_CHECKING:
     from openpyxl.worksheet.worksheet import Worksheet
 
@@ -101,15 +103,23 @@ class ValidationReport:
         headers = ["row", "column", "value", "expected_type", "message", "error_code"]
         _ = worksheet.append(headers)
 
-        error_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+        error_fill = PatternFill(
+            start_color="FFC7CE", end_color="FFC7CE", fill_type="solid"
+        )
 
         for error in self.errors:
             value_obj = cast("object", error.value)
+            if value_obj is None:
+                rendered_value: object = None
+            elif isinstance(value_obj, str):
+                rendered_value = sanitize_cell_value(value_obj)
+            else:
+                rendered_value = str(value_obj)
             _ = worksheet.append(
                 [
                     error.row,
                     error.column,
-                    str(value_obj) if value_obj is not None else None,
+                    rendered_value,
                     error.expected_type,
                     error.message,
                     error.error_code,

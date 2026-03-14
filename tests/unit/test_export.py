@@ -182,3 +182,24 @@ def test_export_empty_rows() -> None:
     assert ws.cell(row=1, column=2).value == "Name"
     assert ws.cell(row=1, column=3).value == "Email"
     assert ws.cell(row=1, column=4).value == "Age"
+
+
+def test_export_sanitizes_formula_like_strings() -> None:
+    mapping = ExcelMapping.from_model(SimpleUser)
+    exporter = ExcelExporter([mapping])
+
+    content = exporter.export(
+        rows=[
+            {"id": 1, "name": "=CMD()", "email": "+1", "age": 20},
+            {"id": 2, "name": "-1", "email": "@SUM", "age": 30},
+        ],
+        path=None,
+    )
+    assert isinstance(content, bytes)
+
+    ws = openpyxl.load_workbook(BytesIO(content)).active
+    assert ws is not None
+    assert ws.cell(row=2, column=2).value == "'=CMD()"
+    assert ws.cell(row=2, column=3).value == "'+1"
+    assert ws.cell(row=3, column=2).value == "'-1"
+    assert ws.cell(row=3, column=3).value == "'@SUM"

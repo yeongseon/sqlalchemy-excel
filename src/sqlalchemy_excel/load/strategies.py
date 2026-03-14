@@ -193,7 +193,14 @@ class UpsertStrategy:
             savepoint = session.begin_nested()
             try:
                 for row in batch:
-                    key_filter = {key: row[key] for key in key_columns}
+                    key_filter, missing_keys = _build_key_filter(row, key_columns)
+                    if missing_keys:
+                        result.failed += 1
+                        result.errors.append(
+                            f"Missing upsert key column(s): {', '.join(missing_keys)}"
+                        )
+                        continue
+
                     existing = session.execute(
                         select(model_class).filter_by(**key_filter)
                     ).scalar_one_or_none()
@@ -256,7 +263,10 @@ class UpsertStrategy:
         inserted_in_batch = 0
         updated_in_batch = 0
         for row in batch:
-            key_filter = {key: row[key] for key in key_columns}
+            key_filter, missing_keys = _build_key_filter(row, key_columns)
+            if missing_keys:
+                continue
+
             existing = session.execute(
                 select(model_class).filter_by(**key_filter)
             ).scalar_one_or_none()
@@ -271,7 +281,16 @@ class UpsertStrategy:
         for row in batch:
             savepoint = session.begin_nested()
             try:
-                key_filter = {key: row[key] for key in key_columns}
+                key_filter, missing_keys = _build_key_filter(row, key_columns)
+                if missing_keys:
+                    result.failed += 1
+                    result.errors.append(
+                        f"Missing upsert key column(s): {', '.join(missing_keys)}"
+                    )
+                    if savepoint.is_active:
+                        savepoint.rollback()
+                    continue
+
                 existing = session.execute(
                     select(model_class).filter_by(**key_filter)
                 ).scalar_one_or_none()
@@ -338,3 +357,17 @@ class DryRunStrategy:
                     savepoint.rollback()
 
         return result
+
+
+def _build_key_filter(
+    row: dict[str, object],
+    key_columns: list[str],
+) -> tuple[dict[str, object], list[str]]:
+    key_filter: dict[str, object] = {}
+    missing_keys: list[str] = []
+    for key in key_columns:
+        if key not in row:
+            missing_keys.append(key)
+            continue
+        key_filter[key] = row[key]
+    return key_filter, missing_keys

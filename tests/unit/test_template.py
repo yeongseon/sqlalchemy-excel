@@ -6,9 +6,10 @@ from io import BytesIO
 import pytest
 from conftest import Employee, SimpleUser
 from openpyxl import load_workbook
+from sqlalchemy import String
 
 from sqlalchemy_excel.exceptions import TemplateError
-from sqlalchemy_excel.mapping import ExcelMapping
+from sqlalchemy_excel.mapping import ColumnMapping, ExcelMapping
 from sqlalchemy_excel.template import ExcelTemplate
 
 
@@ -55,7 +56,10 @@ def test_header_row_values(tmp_path) -> None:
 
     workbook = load_workbook(output)
     worksheet = workbook[mapping.sheet_name]
-    headers = [worksheet.cell(row=1, column=i).value for i in range(1, len(mapping.columns) + 1)]
+    headers = [
+        worksheet.cell(row=1, column=i).value
+        for i in range(1, len(mapping.columns) + 1)
+    ]
 
     assert headers == [column.excel_header for column in mapping.columns]
 
@@ -102,7 +106,9 @@ def test_enum_data_validation() -> None:
 
     status_values = ["active", "inactive", "on_leave"]
     matching_validation = next(
-        validation for validation in validations if all(value in validation.formula1 for value in status_values)
+        validation
+        for validation in validations
+        if all(value in validation.formula1 for value in status_values)
     )
     assert matching_validation.type == "list"
 
@@ -113,7 +119,10 @@ def test_sample_data_included() -> None:
     workbook = _workbook_from_bytes(template.to_bytes())
     worksheet = workbook[mapping.sheet_name]
 
-    row_two_values = [worksheet.cell(row=2, column=i).value for i in range(1, len(mapping.columns) + 1)]
+    row_two_values = [
+        worksheet.cell(row=2, column=i).value
+        for i in range(1, len(mapping.columns) + 1)
+    ]
     assert any(value is not None for value in row_two_values)
 
 
@@ -154,3 +163,55 @@ def test_column_comments() -> None:
         comment = worksheet.cell(row=1, column=index).comment
         assert comment is not None
         assert "Type:" in comment.text
+
+
+def test_sample_data_sanitizes_enum_formula_values() -> None:
+    mapping = ExcelMapping(
+        model_class=SimpleUser,
+        sheet_name="dangerous_sample",
+        columns=[
+            ColumnMapping(
+                name="name",
+                excel_header="Name",
+                python_type=str,
+                sqla_type=String(),
+                nullable=False,
+                primary_key=False,
+                has_default=False,
+                enum_values=["=CMD()"],
+            )
+        ],
+        key_columns=[],
+    )
+    template = ExcelTemplate([mapping], include_sample_data=True)
+    worksheet = _workbook_from_bytes(template.to_bytes())[mapping.sheet_name]
+
+    assert worksheet.cell(row=2, column=1).value == "'=CMD()"
+
+
+def test_enum_data_validation_skipped_for_long_formula() -> None:
+    long_values = [f"value_{index:03d}_long_text" for index in range(30)]
+    mapping = ExcelMapping(
+        model_class=SimpleUser,
+        sheet_name="long_enum",
+        columns=[
+            ColumnMapping(
+                name="status",
+                excel_header="Status",
+                python_type=str,
+                sqla_type=String(),
+                nullable=False,
+                primary_key=False,
+                has_default=False,
+                enum_values=long_values,
+            )
+        ],
+        key_columns=[],
+    )
+    template = ExcelTemplate([mapping])
+    worksheet = _workbook_from_bytes(template.to_bytes())[mapping.sheet_name]
+
+    assert len(list(worksheet.data_validations.dataValidation)) == 0
+    comment = worksheet.cell(row=1, column=1).comment
+    assert comment is not None
+    assert "Dropdown omitted" in comment.text

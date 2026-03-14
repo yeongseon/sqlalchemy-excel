@@ -39,7 +39,9 @@ def test_column_mapping_nullable() -> None:
 def test_column_mapping_primary_key() -> None:
     mapping = ExcelMapping.from_model(SimpleUser)
 
-    primary_key_columns = [column.name for column in mapping.columns if column.primary_key]
+    primary_key_columns = [
+        column.name for column in mapping.columns if column.primary_key
+    ]
     assert primary_key_columns == ["id"]
 
 
@@ -124,7 +126,6 @@ def test_invalid_key_columns() -> None:
 def test_non_model_raises_error() -> None:
     with pytest.raises(MappingError, match="Could not inspect model"):
         ExcelMapping.from_model(str)
-
 
 
 def test_models_from_conftest_are_real_sqlalchemy_models() -> None:
