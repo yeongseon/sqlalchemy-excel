@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
+from contextlib import suppress
 from datetime import date, datetime
-from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
-from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from sqlalchemy_excel._compat import sanitize_cell_value
+from sqlalchemy_excel.excelio.session import ExcelWorkbookSession
 from sqlalchemy_excel.exceptions import ExportError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
+
+    from openpyxl.workbook.workbook import Workbook
 
     from sqlalchemy_excel.mapping import ExcelMapping
 
@@ -66,48 +70,50 @@ class ExcelExporter:
         Raises:
             ExportError: If export fails.
         """
-        try:
-            wb = self._create_workbook(rows, sheet_name)
-        except Exception as e:
-            raise ExportError(f"Failed to create Excel workbook: {e}") from e
-
         if path is not None:
             try:
-                wb.save(str(path))
+                with ExcelWorkbookSession.open(path, create=True) as session:
+                    self._populate_workbook(session.workbook, rows, sheet_name)
+                    session.commit()
             except Exception as e:
                 raise ExportError(f"Failed to save Excel file: {e}") from e
             return None
 
-        buffer = BytesIO()
+        temp_path: str | None = None
         try:
-            wb.save(buffer)
+            with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+                temp_path = tmp.name
+
+            _ = self.export(rows, temp_path, sheet_name=sheet_name)
+
+            with open(temp_path, "rb") as file_obj:
+                return file_obj.read()
         except Exception as e:
             raise ExportError(f"Failed to write Excel to buffer: {e}") from e
-        return buffer.getvalue()
+        finally:
+            if temp_path is not None:
+                with suppress(OSError):
+                    os.unlink(temp_path)
 
-    def _create_workbook(
+    def _populate_workbook(
         self,
+        wb: Workbook,
         rows: Sequence[Any],
         sheet_name_override: str | None,
-    ) -> Workbook:
-        """Create an openpyxl Workbook with formatted data.
+    ) -> None:
+        """Populate an openpyxl Workbook with formatted data.
 
         Args:
+            wb: Workbook to populate in place.
             rows: Data rows to export.
             sheet_name_override: Optional sheet name override.
-
-        Returns:
-            Configured openpyxl Workbook.
         """
-        wb = Workbook()
 
-        for i, mapping in enumerate(self._mappings):
-            if i == 0:
-                ws = wb.active
-                if ws is None:  # pragma: no cover
-                    ws = wb.create_sheet()
-            else:
-                ws = wb.create_sheet()
+        for sheet_name in list(wb.sheetnames):
+            del wb[sheet_name]
+
+        for mapping in self._mappings:
+            ws = wb.create_sheet()
 
             ws.title = sheet_name_override or mapping.sheet_name
 
@@ -149,8 +155,6 @@ class ExcelExporter:
 
             # Freeze header row
             ws.freeze_panes = "A2"
-
-        return wb
 
     @staticmethod
     def _extract_value(row: Any, column_name: str) -> Any:

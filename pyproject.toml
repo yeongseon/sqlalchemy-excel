@@ -33,6 +33,7 @@ dependencies = [
     "pydantic>=2.0",
     "defusedxml>=0.7",
     "click>=8.0",
+    "excel-dbapi>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -107,6 +108,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "defusedxml.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "excel_dbapi.*"
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

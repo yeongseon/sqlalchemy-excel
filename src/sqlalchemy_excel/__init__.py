@@ -49,6 +49,10 @@ def __getattr__(name: str) -> object:
         from sqlalchemy_excel.template import ExcelTemplate
 
         return ExcelTemplate
+    if name == "ExcelWorkbookSession":
+        from sqlalchemy_excel.excelio import ExcelWorkbookSession
+
+        return ExcelWorkbookSession
     if name == "ExcelValidator":
         from sqlalchemy_excel.validation import ExcelValidator
 
@@ -83,10 +87,10 @@ __all__ = [
     "DuplicateKeyError",
     "ExcelExporter",
     "ExcelImporter",
-    # Core API
     "ExcelMapping",
     "ExcelTemplate",
     "ExcelValidator",
+    "ExcelWorkbookSession",
     "ExportError",
     "FileFormatError",
     "HeaderMismatchError",
@@ -95,7 +99,6 @@ __all__ = [
     "MappingError",
     "ReaderError",
     "SheetNotFoundError",
-    # Exceptions
     "SqlalchemyExcelError",
     "TemplateError",
     "ValidationError",

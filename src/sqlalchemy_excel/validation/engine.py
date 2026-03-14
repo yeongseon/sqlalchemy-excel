@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, BinaryIO, Protocol, cast
 
 from sqlalchemy_excel.reader.base import normalize_header
-from sqlalchemy_excel.reader.openpyxl_reader import OpenpyxlReader
+from sqlalchemy_excel.reader.excel_dbapi_reader import ExcelDbapiReader
 from sqlalchemy_excel.validation.pydantic_backend import PydanticBackend
 from sqlalchemy_excel.validation.report import CellError, ValidationReport
 
@@ -151,7 +151,7 @@ def _select_mapping(
 
 
 def _build_reader() -> _ReaderProtocol:
-    return cast("_ReaderProtocol", cast("object", OpenpyxlReader(read_only=True)))
+    return cast("_ReaderProtocol", cast("object", ExcelDbapiReader(read_only=True)))
 
 
 def _build_header_map(mapping: ExcelMapping, headers: list[str]) -> dict[str, str]:

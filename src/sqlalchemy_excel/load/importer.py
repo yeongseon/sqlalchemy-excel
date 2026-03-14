@@ -247,7 +247,7 @@ class ExcelImporter:
         return cast("_ValidatorLike", cast("object", validator))
 
     def _create_reader(self) -> _ReaderLike:
-        """Create an ``OpenpyxlReader`` instance for reading workbook rows.
+        """Create an ``ExcelDbapiReader`` instance for reading workbook rows.
 
         Returns:
             Reader instance with a ``read`` method.
@@ -257,14 +257,14 @@ class ExcelImporter:
         """
 
         try:
-            from sqlalchemy_excel.reader.openpyxl_reader import OpenpyxlReader
+            from sqlalchemy_excel.reader.excel_dbapi_reader import ExcelDbapiReader
         except ModuleNotFoundError as exc:
             raise ImportError_(
-                "OpenpyxlReader is unavailable. "
-                + "Implement sqlalchemy_excel.reader.openpyxl_reader first."
+                "ExcelDbapiReader is unavailable. "
+                + "Implement sqlalchemy_excel.reader.excel_dbapi_reader first."
             ) from exc
 
-        reader = OpenpyxlReader(read_only=True)
+        reader = ExcelDbapiReader(read_only=True)
         return cast("_ReaderLike", cast("object", reader))
 
     def _extract_rows_for_mapping(

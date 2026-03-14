@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import enum
+import os
+import tempfile
+from contextlib import suppress
 from datetime import date, datetime
 from io import BytesIO
 from typing import TYPE_CHECKING, cast
@@ -14,6 +17,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from sqlalchemy_excel._compat import sanitize_cell_value
+from sqlalchemy_excel.excelio.session import ExcelWorkbookSession
 from sqlalchemy_excel.exceptions import TemplateError
 
 if TYPE_CHECKING:
@@ -66,9 +70,10 @@ class ExcelTemplate:
         Raises:
             TemplateError: If workbook generation or saving fails.
         """
-        workbook = self._build_workbook()
         try:
-            workbook.save(path)
+            with ExcelWorkbookSession.open(path, create=True) as session:
+                self._populate_workbook(session.workbook)
+                session.commit()
         except Exception as exc:
             raise TemplateError(f"Failed to save template to '{path}': {exc}") from exc
 
@@ -93,31 +98,42 @@ class ExcelTemplate:
         Raises:
             TemplateError: If workbook generation fails.
         """
-        workbook = self._build_workbook()
-        stream = BytesIO()
+        temp_path: str | None = None
         try:
-            workbook.save(stream)
+            with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+                temp_path = tmp.name
+
+            self.save(temp_path)
+
+            with open(temp_path, "rb") as file_obj:
+                stream = BytesIO(file_obj.read())
         except Exception as exc:
             raise TemplateError(f"Failed to render template workbook: {exc}") from exc
+        finally:
+            if temp_path is not None:
+                with suppress(OSError):
+                    os.unlink(temp_path)
+
         _ = stream.seek(0)
         return stream
 
     def _build_workbook(self) -> Workbook:
+        workbook = Workbook()
+        self._populate_workbook(workbook)
+        return workbook
+
+    def _populate_workbook(self, workbook: Workbook) -> None:
         if not self._mappings:
             raise TemplateError("At least one mapping is required to build a template")
 
-        workbook = Workbook()
-        default_sheet = workbook.active
-        if default_sheet is not None:
-            workbook.remove(default_sheet)
+        for sheet_name in list(workbook.sheetnames):
+            del workbook[sheet_name]
 
         try:
             for mapping in self._mappings:
                 self._add_sheet(workbook, mapping)
         except Exception as exc:
             raise TemplateError(f"Failed to build template workbook: {exc}") from exc
-
-        return workbook
 
     def _add_sheet(self, workbook: Workbook, mapping: ExcelMapping) -> None:
         worksheet = cast("Worksheet", workbook.create_sheet(title=mapping.sheet_name))
