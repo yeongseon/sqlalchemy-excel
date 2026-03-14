@@ -1,0 +1,120 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sqlalchemy-excel"
+version = "0.1.0"
+description = "SQLAlchemy model-driven Excel template generation, validation, and database import toolkit"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Yeongseon Choe"},
+]
+keywords = ["sqlalchemy", "excel", "template", "validation", "import", "openpyxl"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Office/Business :: Financial :: Spreadsheet",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "sqlalchemy>=2.0",
+    "openpyxl>=3.1",
+    "pydantic>=2.0",
+    "defusedxml>=0.7",
+    "click>=8.0",
+]
+
+[project.optional-dependencies]
+pandas = ["pandas>=2.0"]
+pandera = ["pandera>=0.18", "pandas>=2.0"]
+fastapi = ["fastapi>=0.100", "python-multipart>=0.0.5"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "hypothesis>=6.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "httpx>=0.27",
+]
+all = [
+    "sqlalchemy-excel[pandas]",
+    "sqlalchemy-excel[pandera]",
+    "sqlalchemy-excel[fastapi]",
+    "sqlalchemy-excel[dev]",
+]
+
+[project.scripts]
+sqlalchemy-excel = "sqlalchemy_excel.cli:cli"
+
+[project.urls]
+Homepage = "https://github.com/yeongseon/sqlalchemy-excel"
+Documentation = "https://github.com/yeongseon/sqlalchemy-excel#readme"
+Repository = "https://github.com/yeongseon/sqlalchemy-excel"
+Issues = "https://github.com/yeongseon/sqlalchemy-excel/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sqlalchemy_excel"]
+
+[tool.ruff]
+target-version = "py310"
+src = ["src"]
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+    "RUF",  # ruff-specific
+]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["sqlalchemy_excel"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = "openpyxl.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "defusedxml.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
+
+[tool.coverage.run]
+source = ["sqlalchemy_excel"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__",
+    "@overload",
+]
