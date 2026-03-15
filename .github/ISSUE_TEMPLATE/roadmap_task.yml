@@ -1,0 +1,15 @@
+name: Roadmap task
+description: Track roadmap execution item
+labels: [roadmap]
+body:
+  - type: input
+    id: milestone
+    attributes:
+      label: Milestone
+      placeholder: M1 / M2 / M3 / M4
+  - type: textarea
+    id: dod
+    attributes:
+      label: Definition of done
+    validations:
+      required: true

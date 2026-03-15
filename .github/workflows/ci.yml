@@ -39,10 +39,28 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: pip install -e ".[dev]"
-      - name: Run tests
-        run: pytest --cov=sqlalchemy_excel --cov-report=xml -q
+      - name: Run tests with coverage
+        run: pytest --cov=sqlalchemy_excel --cov-report=xml:coverage.xml -q
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
         if: matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v4
         with:
-          file: ./coverage.xml
+          files: ./coverage.xml
+          fail_ci_if_error: true
+
+  smoke-os:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Smoke tests
+        run: pytest tests/unit/test_template.py tests/unit/test_reader.py -q

@@ -1093,3 +1093,12 @@ src/sqlalchemy_excel/        # Library source code
 MIT License. Copyright (c) 2025 Yeongseon Choe.
 
 See [LICENSE](LICENSE) for full text.
+
+
+## Operational Guides
+
+- [Release checklist](docs/release-checklist.md)
+- [Security defaults checklist](docs/security-defaults-checklist.md)
+- [10-minute backend upload pipeline tutorial](docs/tutorials/backend-upload-pipeline-10min.md)
+- [Growth roadmap](docs/GROWTH_ROADMAP_2026.md)
+
