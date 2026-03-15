@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import openpyxl
 import pytest
 
-_conftest = importlib.import_module("conftest")
+_conftest = importlib.import_module("tests.conftest")
 Base = _conftest.Base
 Employee = _conftest.Employee
 SimpleUser = _conftest.SimpleUser

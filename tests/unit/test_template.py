@@ -4,9 +4,9 @@ from __future__ import annotations
 from io import BytesIO
 
 import pytest
-from conftest import Employee, SimpleUser
 from openpyxl import load_workbook
 from sqlalchemy import String
+from tests.conftest import Employee, SimpleUser
 
 from sqlalchemy_excel.exceptions import TemplateError
 from sqlalchemy_excel.mapping import ColumnMapping, ExcelMapping

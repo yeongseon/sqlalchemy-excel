@@ -120,7 +120,7 @@ class ExcelDbapiReader:
     def _resolve_source(self, source: FileSource) -> tuple[str, bool]:
         """Convert file source to path, using a temp file for streams."""
 
-        if isinstance(source, (str, Path, os.PathLike)):
+        if isinstance(source, str | Path | os.PathLike):
             return str(source), False
 
         binary_source = source

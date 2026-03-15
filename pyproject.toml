@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sqlalchemy-excel"
-version = "0.1.0"
+version = "1.0.0"
 description = "SQLAlchemy model-driven Excel template generation, validation, and database import toolkit"
 readme = "README.md"
 license = {text = "MIT"}
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["sqlalchemy", "excel", "template", "validation", "import", "openpyxl"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -33,7 +33,7 @@ dependencies = [
     "pydantic>=2.0",
     "defusedxml>=0.7",
     "click>=8.0",
-    "excel-dbapi>=1.0",
+    "excel-dbapi>=1.0,<2.0",
 ]
 
 [project.optional-dependencies]
@@ -47,6 +47,7 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
     "httpx>=0.27",
+    "packaging>=24.0",
 ]
 all = [
     "pandas>=2.0",
@@ -59,6 +60,7 @@ all = [
     "ruff>=0.4",
     "mypy>=1.10",
     "httpx>=0.27",
+    "packaging>=24.0",
 ]
 
 [project.scripts]

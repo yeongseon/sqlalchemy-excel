@@ -7,7 +7,7 @@ import pytest
 from openpyxl import Workbook
 from sqlalchemy import select
 
-_conftest = importlib.import_module("conftest")
+_conftest = importlib.import_module("tests.conftest")
 Base = _conftest.Base
 SimpleUser = _conftest.SimpleUser
 
@@ -363,3 +363,60 @@ def test_importer_create_reader_uses_read_only(session) -> None:
     reader = importer._create_reader()
 
     assert reader.read_only is True
+
+
+def test_importer_insert_validation_failure_blocks_write(tmp_path: Path, session) -> None:
+    mapping = ExcelMapping.from_model(SimpleUser)
+    importer = ExcelImporter([mapping], session)
+    source = tmp_path / "users_invalid_insert.xlsx"
+    _create_test_xlsx(
+        source,
+        headers=["id", "name", "email", "age"],
+        rows=[
+            [1, "Alice", "alice@example.com", "not-an-int"],
+        ],
+    )
+
+    result = importer.insert(source, validate=True)
+
+    assert result.failed == 1
+    assert result.inserted == 0
+    assert session.query(SimpleUser).count() == 0
+
+
+def test_importer_upsert_validation_failure_blocks_write(tmp_path: Path, session) -> None:
+    mapping = ExcelMapping.from_model(SimpleUser)
+    importer = ExcelImporter([mapping], session)
+    source = tmp_path / "users_invalid_upsert.xlsx"
+    _create_test_xlsx(
+        source,
+        headers=["id", "name", "email", "age"],
+        rows=[
+            [1, None, "alice@example.com", 10],
+        ],
+    )
+
+    result = importer.upsert(source, validate=True)
+
+    assert result.failed == 1
+    assert result.inserted == 0
+    assert result.updated == 0
+
+
+def test_importer_dry_run_does_not_persist_even_with_valid_data(
+    tmp_path: Path, session
+) -> None:
+    mapping = ExcelMapping.from_model(SimpleUser)
+    importer = ExcelImporter([mapping], session)
+    source = tmp_path / "users_valid_dry_run.xlsx"
+    _create_test_xlsx(
+        source,
+        headers=["id", "name", "email", "age"],
+        rows=[[99, "Dry", "dry@example.com", 21]],
+    )
+
+    result = importer.dry_run(source, validate=True)
+
+    assert result.inserted == 1
+    assert result.failed == 0
+    assert session.query(SimpleUser).count() == 0

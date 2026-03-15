@@ -99,7 +99,7 @@ class OpenpyxlReader:
             raise
 
     def _validate_file_size(self, source: FileSource) -> None:
-        if isinstance(source, (str, Path, os.PathLike)):
+        if isinstance(source, str | Path | os.PathLike):
             self._validate_path_size(source)
             return
 

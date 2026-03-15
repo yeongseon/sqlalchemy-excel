@@ -14,12 +14,20 @@ if TYPE_CHECKING:
     from fastapi import APIRouter
 
 
+_DEFAULT_CONTENT_TYPES = {
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/octet-stream",
+}
+
+
 def create_import_router(
     model: type,
     *,
     prefix: str = "",
     tags: list[str] | None = None,
     session_dependency: Any = None,
+    max_upload_bytes: int | None = 10 * 1024 * 1024,
+    allowed_content_types: set[str] | None = None,
 ) -> APIRouter:
     """Create a FastAPI router with Excel template and import endpoints.
 
@@ -34,22 +42,14 @@ def create_import_router(
         prefix: URL prefix for all endpoints.
         tags: OpenAPI tags for the endpoints.
         session_dependency: FastAPI Depends callable that yields a Session.
+        max_upload_bytes: Maximum upload size in bytes. None disables size check.
+        allowed_content_types: Allowed MIME types for uploads.
 
     Returns:
         Configured FastAPI APIRouter.
 
     Raises:
         ImportError: If fastapi is not installed.
-
-    Example:
-        >>> from myapp.models import User
-        >>> from myapp.database import get_session
-        >>> router = create_import_router(
-        ...     User,
-        ...     prefix="/users",
-        ...     session_dependency=get_session,
-        ... )
-        >>> app.include_router(router)
     """
     fastapi = import_optional("fastapi", "fastapi")
     APIRouter = fastapi.APIRouter  # noqa: N806
@@ -60,6 +60,9 @@ def create_import_router(
     HTTPException = fastapi.HTTPException  # noqa: N806
     _ = UploadFile
 
+    from io import BytesIO
+
+    from sqlalchemy_excel.load import ExcelImporter
     from sqlalchemy_excel.mapping import ExcelMapping
     from sqlalchemy_excel.template import (
         ExcelTemplate,  # pyright: ignore[reportMissingImports]
@@ -68,6 +71,31 @@ def create_import_router(
 
     router = APIRouter(prefix=prefix, tags=tags or [])
     mapping = ExcelMapping.from_model(model)
+    effective_content_types = allowed_content_types or _DEFAULT_CONTENT_TYPES
+
+    async def _read_and_validate_payload(file: Any) -> bytes:
+        content_type = getattr(file, "content_type", None)
+        if content_type and content_type not in effective_content_types:
+            raise HTTPException(
+                status_code=415,
+                detail={
+                    "message": "Unsupported content type",
+                    "allowed_content_types": sorted(effective_content_types),
+                    "received": content_type,
+                },
+            )
+
+        content = await file.read()
+        if max_upload_bytes is not None and len(content) > max_upload_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail={
+                    "message": "Uploaded file is too large",
+                    "max_upload_bytes": max_upload_bytes,
+                    "received_bytes": len(content),
+                },
+            )
+        return content
 
     @router.get("/template")  # type: ignore[misc]
     def download_template() -> Any:
@@ -87,10 +115,7 @@ def create_import_router(
     ) -> dict[str, Any]:
         """Validate an uploaded Excel file against the model schema."""
         validator = ExcelValidator([mapping])
-        content = await file.read()
-
-        from io import BytesIO
-
+        content = await _read_and_validate_payload(file)
         report = validator.validate(BytesIO(content))
         return report.to_dict()
 
@@ -102,14 +127,9 @@ def create_import_router(
             session: Any = Depends(session_dependency),  # noqa: B008
         ) -> dict[str, Any]:
             """Validate and import an uploaded Excel file to the database."""
-            from io import BytesIO
-
-            from sqlalchemy_excel.load import ExcelImporter
-
-            content = await file.read()
+            content = await _read_and_validate_payload(file)
             source = BytesIO(content)
 
-            # Validate first
             validator = ExcelValidator([mapping])
             report = validator.validate(source)
             if report.has_errors:
@@ -121,7 +141,6 @@ def create_import_router(
                     },
                 )
 
-            # Import
             source.seek(0)
             importer = ExcelImporter([mapping], session=session)
             result = importer.insert(source)

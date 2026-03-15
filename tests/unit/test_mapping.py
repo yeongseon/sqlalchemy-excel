@@ -2,7 +2,14 @@ from __future__ import annotations
 
 # pyright: reportImplicitRelativeImport=none, reportMissingImports=none, reportUnknownVariableType=none, reportUnknownMemberType=none, reportUnknownParameterType=none, reportUnknownArgumentType=none, reportAny=none
 import pytest
-from conftest import Base, Department, Employee, EmployeeStatus, Product, SimpleUser
+from tests.conftest import (
+    Base,
+    Department,
+    Employee,
+    EmployeeStatus,
+    Product,
+    SimpleUser,
+)
 
 from sqlalchemy_excel.exceptions import MappingError
 from sqlalchemy_excel.mapping import ExcelMapping
