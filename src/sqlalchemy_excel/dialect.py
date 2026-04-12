@@ -278,7 +278,7 @@ class ExcelGraphDialect(ExcelDialect):  # type: ignore[misc,unused-ignore]
 
         kwargs = {
             "file_path": dsn,
-            "engine": None,
+            "engine": "graph",
             "autocommit": True,
             "create": False,
         }

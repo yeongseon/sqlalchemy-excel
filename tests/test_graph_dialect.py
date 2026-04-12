@@ -69,7 +69,7 @@ class TestGraphURLParsing:
         args, kwargs = dialect.create_connect_args(url)
         assert args == []
         assert kwargs["file_path"] == "msgraph://drives/drv-abc/items/itm-xyz"
-        assert kwargs["engine"] is None
+        assert kwargs["engine"] == "graph"
         assert kwargs["autocommit"] is True
         assert kwargs["create"] is False
 
