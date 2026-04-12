@@ -269,6 +269,52 @@ def test_e2e_group_by_having(tmp_path) -> None:
 
     engine.dispose()
 
+
+def test_e2e_group_by_having_aggregate_not_in_select(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(users).values(id=3, name="Alice", age=35))
+
+    with engine.connect() as conn:
+        stmt = (
+            select(users.c.name)
+            .group_by(users.c.name)
+            .having(func.count(users.c.id) > 1)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [("Alice",)]
+
+    engine.dispose()
+
+
+def test_e2e_group_by_order_by_group_key_not_in_select(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(users).values(id=3, name="Alice", age=35))
+
+    with engine.connect() as conn:
+        stmt = (
+            select(func.count(users.c.id))
+            .group_by(users.c.name)
+            .order_by(users.c.name)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [(2,), (1,)]
+
+    engine.dispose()
+
 def test_e2e_offset_compiles_and_executes(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()

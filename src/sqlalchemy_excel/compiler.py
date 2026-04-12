@@ -31,6 +31,9 @@ if TYPE_CHECKING:
     from collections.abc import MutableMapping
 
 
+_SUPPORTED_FUNCTIONS = {"count", "sum", "avg", "min", "max"}
+
+
 class ExcelIdentifierPreparer(compiler.IdentifierPreparer):
     """Identifier preparer that never quotes identifiers.
 
@@ -51,6 +54,25 @@ class ExcelIdentifierPreparer(compiler.IdentifierPreparer):
 
 class ExcelCompiler(compiler.SQLCompiler):
     """Compiles SQLAlchemy SQL expressions for excel-dbapi."""
+
+    def visit_function(
+        self,
+        func: Any,
+        add_to_result_map: Any = None,
+        **kwargs: Any,
+    ) -> str:
+        function_name = str(getattr(func, "name", "")).lower()
+        if function_name not in _SUPPORTED_FUNCTIONS:
+            raise exc.CompileError(
+                f"Excel dialect does not support function: {function_name}"
+            )
+        return str(
+            super().visit_function(
+                func,
+                add_to_result_map=add_to_result_map,
+                **kwargs,
+            )
+        )
 
     def visit_column(
         self,

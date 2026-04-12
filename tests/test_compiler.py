@@ -158,3 +158,10 @@ class TestCompilationRejection:
         compiled = stmt.compile(dialect=excel_engine.dialect)
         sql = str(compiled)
         assert "sum" in sql.lower()
+
+    def test_unsupported_aggregate_function_rejected(self, excel_engine, users_table):
+        from sqlalchemy import func
+
+        stmt = select(func.median(users_table.c.age)).select_from(users_table)
+        with pytest.raises(exc.CompileError, match="function"):
+            stmt.compile(dialect=excel_engine.dialect)
