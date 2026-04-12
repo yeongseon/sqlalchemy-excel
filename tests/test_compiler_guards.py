@@ -733,8 +733,9 @@ def test_compiler_rejects_same_side_on_clause(tmp_xlsx: str) -> None:
 
 
 def test_compiler_handles_grouping_wrapper_in_on(tmp_xlsx: str) -> None:
-    """Grouping-wrapped AND ON clause should be accepted."""
+    """Grouping-wrapped ON clause should be accepted by _check_on_clause."""
     from sqlalchemy import and_
+    from sqlalchemy.sql.elements import Grouping
 
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
@@ -752,15 +753,17 @@ def test_compiler_handles_grouping_wrapper_in_on(tmp_xlsx: str) -> None:
         Column("dept_id", Integer),
     )
 
-    # Use and_() explicitly which may create a Grouping wrapper
-    stmt = (
-        select(users.c.id, orders.c.id)
-        .join(
-            orders,
-            and_(users.c.id == orders.c.user_id, users.c.dept_id == orders.c.dept_id),
-        )
-    )
-    # Should not raise
+    # Build an AND clause and explicitly wrap it in a Grouping node
+    # to exercise the __visit_name__ == "grouping" path in _check_on_clause
+    and_clause = and_(users.c.id == orders.c.user_id, users.c.dept_id == orders.c.dept_id)
+    grouped_on = Grouping(and_clause)
+    assert grouped_on.__visit_name__ == "grouping"  # confirm we're hitting the right path
+
+    # Manually construct the join with the Grouping-wrapped ON clause
+    j = users.join(orders, onclause=grouped_on)
+    stmt = select(users.c.id, orders.c.id).select_from(j)
+
+    # Should not raise — the grouping branch must unwrap and recurse
     compiled = stmt.compile(dialect=engine.dialect)
     sql_text = str(compiled)
     assert "JOIN" in sql_text
