@@ -10,7 +10,46 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Docs](https://img.shields.io/badge/docs-GitHub-blue.svg)](https://github.com/yeongseon/sqlalchemy-excel/tree/main/docs)
 
-SQLAlchemy dialect for Excel files — use Excel as a database.
+SQLAlchemy dialect for Excel files — use Excel worksheets as database tables.
+This is a **narrow-scope dialect**: it supports basic CRUD and ORM mapping, but not
+relational features like JOINs or aggregations.
+
+## Limitations (Read First)
+
+Before writing any code, understand what this dialect **cannot** do:
+
+| Feature | Supported? |
+|---------|-----------|
+| SELECT with WHERE, ORDER BY, LIMIT | ✅ |
+| INSERT, UPDATE, DELETE | ✅ |
+| CREATE TABLE / DROP TABLE | ✅ |
+| ORM with DeclarativeBase | ✅ |
+| Schema inspection (tables, columns) | ✅ |
+| IN, BETWEEN, LIKE operators | ✅ |
+| **JOIN** (any variant) | ❌ |
+| **GROUP BY / HAVING** | ❌ |
+| **DISTINCT** | ❌ |
+| **OFFSET** | ❌ |
+| **Subqueries / CTEs** | ❌ |
+| **Aggregate functions** (COUNT, SUM, ...) | ❌ |
+| **ALTER TABLE** | ❌ |
+| **Foreign keys / indexes** | ❌ |
+| **Concurrent writes** | ❌ |
+| **Session.rollback()** | No-op (data persists) |
+
+If you need any of the ❌ features, use SQLite, PostgreSQL, or another full-featured database.
+
+---
+
+## Installation
+
+```bash
+pip install sqlalchemy-excel
+```
+
+`excel-dbapi` is automatically installed as a dependency.
+
+## Quick Start
 
 ```python
 from sqlalchemy import create_engine, Column, Integer, String
@@ -36,14 +75,6 @@ with Session(engine) as session:
     users = session.query(User).all()
 ```
 
-## Installation
-
-```bash
-pip install sqlalchemy-excel
-```
-
-`excel-dbapi` is automatically installed as a dependency.
-
 ## URL Format
 
 ```python
@@ -56,45 +87,6 @@ engine = create_engine("excel:////home/user/data.xlsx")
 # With engine options
 engine = create_engine("excel:///data.xlsx", connect_args={"engine": "openpyxl"})
 ```
-
-## Remote Excel via Microsoft Graph API
-
-Access Excel files on OneDrive/SharePoint directly:
-
-```bash
-pip install sqlalchemy-excel[graph]
-```
-
-```python
-from sqlalchemy import create_engine
-from azure.identity import DefaultAzureCredential
-
-engine = create_engine(
-    "excel+graph:///drive_id/item_id",
-    connect_args={"credential": DefaultAzureCredential()},
-)
-
-with engine.connect() as conn:
-    result = conn.execute(text("SELECT * FROM Sheet1"))
-    for row in result:
-        print(row)
-```
-
-URL format: `excel+graph:///drive_id/item_id` where `drive_id` and `item_id` are Microsoft Graph resource identifiers.
-Query parameters: `?readonly=false` to enable write operations.
-
-
-## Features
-
-- Full SQLAlchemy 2.0 dialect
-- PEP 249 DB-API 2.0 compliant driver ([excel-dbapi](https://github.com/yeongseon/excel-dbapi))
-- SELECT with WHERE, ORDER BY, LIMIT
-- INSERT, UPDATE, DELETE
-- CREATE TABLE / DROP TABLE with metadata tracking
-- IN, BETWEEN, LIKE operators in WHERE clauses
-- ORM support with `DeclarativeBase`
-- Schema inspection (`get_table_names`, `get_columns`, `has_table`)
-- Type mapping: String, Integer, Float, Boolean, Date, DateTime
 
 ## Type Mapping
 
@@ -218,14 +210,37 @@ print(inspector.get_columns("Sheet1"))
 print(inspector.has_table("Sheet1"))
 ```
 
-## Limitations
+---
 
-- No JOIN, GROUP BY, HAVING, DISTINCT, OFFSET
-- No subqueries, CTEs, or aggregate functions
-- No ALTER TABLE, foreign keys, or indexes
-- Single-table operations only
-- No concurrent writes — use a single-writer model
-- `Session.rollback()` is a no-op — Excel files do not support transactional rollback
+## Experimental: Remote Excel via Microsoft Graph API
+
+> **Status**: Experimental — API may change in future releases.
+
+Access Excel files on OneDrive/SharePoint directly:
+
+```bash
+pip install sqlalchemy-excel[graph]
+```
+
+```python
+from sqlalchemy import create_engine
+from azure.identity import DefaultAzureCredential
+
+engine = create_engine(
+    "excel+graph:///drive_id/item_id",
+    connect_args={"credential": DefaultAzureCredential()},
+)
+
+with engine.connect() as conn:
+    result = conn.execute(text("SELECT * FROM Sheet1"))
+    for row in result:
+        print(row)
+```
+
+URL format: `excel+graph:///drive_id/item_id` where `drive_id` and `item_id` are Microsoft Graph resource identifiers.
+Query parameters: `?readonly=false` to enable write operations.
+
+---
 
 ## Related Projects
 
