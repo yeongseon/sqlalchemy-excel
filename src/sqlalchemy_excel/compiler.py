@@ -243,6 +243,10 @@ class ExcelCompiler(compiler.SQLCompiler):
         )
 
     def group_by_clause(self, select: Any, **kw: Any) -> str:
+        if self._has_join and select._group_by_clauses:
+            raise exc.CompileError(
+                "Excel dialect does not support GROUP BY with JOIN"
+            )
         return str(super().group_by_clause(select, **kw))  # type: ignore[no-untyped-call]
 
     def _compose_select_body(
@@ -256,6 +260,20 @@ class ExcelCompiler(compiler.SQLCompiler):
         toplevel: bool,
         kwargs: Any,
     ) -> str:
+        if self._has_join:
+            # Reject DISTINCT + JOIN
+            if select._distinct:
+                raise exc.CompileError(
+                    "Excel dialect does not support DISTINCT with JOIN"
+                )
+            # Reject aggregates + JOIN
+            for col_elem in inner_columns:
+                col_text = str(col_elem)
+                for agg in _SUPPORTED_FUNCTIONS:
+                    if col_text.upper().startswith(agg.upper() + "("):
+                        raise exc.CompileError(
+                            "Excel dialect does not support aggregate functions with JOIN"
+                        )
         return str(
             super()._compose_select_body(  # type: ignore[no-untyped-call]
                 text,

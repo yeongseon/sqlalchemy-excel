@@ -525,3 +525,37 @@ def test_e2e_nested_subquery_rejected(tmp_path) -> None:
             conn.execute(stmt).all()
 
     engine.dispose()
+
+
+def test_e2e_join_with_as_alias(tmp_path) -> None:
+    """JOIN with AS alias syntax (SQLAlchemy's default) works end-to-end."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
+        conn.execute(insert(orders).values(id=2, user_id=2, amount=200))
+
+    with engine.connect() as conn:
+        # SQLAlchemy emits 'FROM users AS users_1 JOIN orders AS orders_1 ON ...'
+        # The parser must accept AS aliases
+        stmt = (
+            select(users.c.name, orders.c.amount)
+            .join(orders, users.c.id == orders.c.user_id)
+            .order_by(orders.c.amount)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [("Alice", 100), ("Bob", 200)]
+
+    engine.dispose()

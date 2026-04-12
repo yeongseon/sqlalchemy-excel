@@ -401,3 +401,52 @@ def test_compiler_visit_subquery_rejects_in_update_context(tmp_xlsx: str) -> Non
         compiler_inst.visit_subquery(sub)
 
     engine.dispose()
+
+
+def test_compiler_rejects_join_with_distinct(tmp_xlsx: str) -> None:
+    """JOIN + DISTINCT should be rejected at compile time."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = (
+        select(users.c.id, orders.c.user_id)
+        .join(orders, users.c.id == orders.c.user_id)
+        .distinct()
+    )
+    with pytest.raises(exc.CompileError, match="DISTINCT with JOIN"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_join_with_aggregate(tmp_xlsx: str) -> None:
+    """JOIN + aggregate functions should be rejected at compile time."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = select(func.count(users.c.id)).join(
+        orders, users.c.id == orders.c.user_id
+    )
+    with pytest.raises(exc.CompileError, match="aggregate functions with JOIN"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_join_with_group_by(tmp_xlsx: str) -> None:
+    """JOIN + GROUP BY should be rejected at compile time."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = (
+        select(users.c.name)
+        .join(orders, users.c.id == orders.c.user_id)
+        .group_by(users.c.name)
+    )
+    with pytest.raises(exc.CompileError, match="GROUP BY with JOIN"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
