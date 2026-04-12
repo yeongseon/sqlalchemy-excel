@@ -266,6 +266,11 @@ class ExcelCompiler(compiler.SQLCompiler):
                 raise exc.CompileError(
                     "Excel dialect does not support DISTINCT with JOIN"
                 )
+            # Reject HAVING + JOIN
+            if select._having_criteria:
+                raise exc.CompileError(
+                    "Excel dialect does not support HAVING with JOIN"
+                )
             # Reject aggregates + JOIN
             for col_elem in inner_columns:
                 col_text = str(col_elem)
@@ -314,6 +319,11 @@ class ExcelCompiler(compiler.SQLCompiler):
                 "Excel dialect only supports subqueries in WHERE ... IN"
             )
 
+        if self._has_join:
+            raise exc.CompileError(
+                "Excel dialect does not support subqueries with JOIN"
+            )
+
         if self._subquery_depth > 0:
             raise exc.CompileError(
                 "Excel dialect does not support nested subqueries"
@@ -345,6 +355,11 @@ class ExcelCompiler(compiler.SQLCompiler):
             if not self._in_in_clause:
                 raise exc.CompileError(
                     "Excel dialect only supports subqueries in WHERE ... IN"
+                )
+
+            if self._has_join:
+                raise exc.CompileError(
+                    "Excel dialect does not support subqueries with JOIN"
                 )
 
             if self._subquery_depth > 0:

@@ -450,3 +450,43 @@ def test_compiler_rejects_join_with_group_by(tmp_xlsx: str) -> None:
         stmt.compile(dialect=engine.dialect)
 
     engine.dispose()
+
+
+def test_compiler_rejects_join_with_having(tmp_xlsx: str) -> None:
+    """JOIN + HAVING should be rejected at compile time."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = (
+        select(users.c.name)
+        .join(orders, users.c.id == orders.c.user_id)
+        .group_by(users.c.name)
+        .having(func.count(users.c.id) > 1)
+    )
+    with pytest.raises(exc.CompileError, match="(GROUP BY|HAVING) with JOIN"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_join_with_subquery(tmp_xlsx: str) -> None:
+    """JOIN + WHERE IN (subquery) should be rejected at compile time."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+    admins = Table(
+        "admins",
+        metadata,
+        Column("id", Integer, primary_key=True),
+    )
+
+    stmt = (
+        select(users.c.name, orders.c.user_id)
+        .join(orders, users.c.id == orders.c.user_id)
+        .where(users.c.id.in_(select(admins.c.id)))
+    )
+    with pytest.raises(exc.CompileError, match="subqueries with JOIN"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
