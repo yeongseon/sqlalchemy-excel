@@ -1,5 +1,11 @@
 # sqlalchemy-excel
 
+![CI](https://github.com/yeongseon/sqlalchemy-excel/actions/workflows/ci.yml/badge.svg)
+[![codecov](https://codecov.io/gh/yeongseon/sqlalchemy-excel/branch/main/graph/badge.svg)](https://codecov.io/gh/yeongseon/sqlalchemy-excel)
+[![PyPI](https://img.shields.io/pypi/v/sqlalchemy-excel.svg)](https://pypi.org/project/sqlalchemy-excel/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+
 SQLAlchemy dialect for Excel files — use Excel as a database.
 
 ```python
@@ -32,6 +38,8 @@ with Session(engine) as session:
 pip install sqlalchemy-excel
 ```
 
+`excel-dbapi` is automatically installed as a dependency.
+
 ## URL Format
 
 ```python
@@ -40,6 +48,9 @@ engine = create_engine("excel:///data.xlsx")
 
 # Absolute path (note four slashes)
 engine = create_engine("excel:////home/user/data.xlsx")
+
+# With engine options
+engine = create_engine("excel:///data.xlsx", connect_args={"engine": "openpyxl"})
 ```
 
 ## Features
@@ -48,9 +59,133 @@ engine = create_engine("excel:////home/user/data.xlsx")
 - PEP 249 DB-API 2.0 compliant driver ([excel-dbapi](https://github.com/yeongseon/excel-dbapi))
 - SELECT with WHERE, ORDER BY, LIMIT
 - INSERT, UPDATE, DELETE
-- CREATE TABLE / DROP TABLE
+- CREATE TABLE / DROP TABLE with metadata tracking
+- IN, BETWEEN, LIKE operators in WHERE clauses
 - ORM support with `DeclarativeBase`
+- Schema inspection (`get_table_names`, `get_columns`, `has_table`)
 - Type mapping: String, Integer, Float, Boolean, Date, DateTime
+
+## Type Mapping
+
+| SQLAlchemy Type | Excel Storage | Notes |
+|---|---|---|
+| `String`, `Text`, `VARCHAR`, `CHAR` | TEXT | All string types map to TEXT |
+| `Integer`, `SmallInteger`, `BigInteger` | INTEGER | All integer types map to INTEGER |
+| `Float`, `Numeric`, `Decimal` | FLOAT | All numeric types map to FLOAT |
+| `Boolean` | BOOLEAN | |
+| `Date` | DATE | |
+| `DateTime`, `TIMESTAMP` | DATETIME | |
+| `Time` | TEXT | Stored as text |
+| `Uuid` | TEXT | Stored as text |
+
+> BLOB, BINARY, JSON, and ARRAY types are not supported and will raise `CompileError`.
+
+## ORM Examples
+
+### Define a Model
+
+```python
+from sqlalchemy import create_engine
+from sqlalchemy.orm import DeclarativeBase, Session, Mapped, mapped_column
+
+engine = create_engine("excel:///data.xlsx")
+
+class Base(DeclarativeBase):
+    pass
+
+class User(Base):
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column()
+    age: Mapped[int] = mapped_column()
+
+Base.metadata.create_all(engine)
+```
+
+### Insert
+
+```python
+with Session(engine) as session:
+    session.add(User(id=1, name="Alice", age=30))
+    session.add(User(id=2, name="Bob", age=25))
+    session.commit()
+```
+
+### Query with Filters
+
+```python
+from sqlalchemy import select
+
+with Session(engine) as session:
+    # Basic query
+    users = session.query(User).all()
+
+    # WHERE clause
+    user = session.query(User).filter(User.name == "Alice").first()
+
+    # IN operator
+    stmt = select(User).where(User.name.in_(["Alice", "Bob"]))
+    users = session.scalars(stmt).all()
+
+    # BETWEEN operator
+    stmt = select(User).where(User.age.between(25, 35))
+    users = session.scalars(stmt).all()
+
+    # LIKE operator
+    stmt = select(User).where(User.name.like("A%"))
+    users = session.scalars(stmt).all()
+
+    # ORDER BY + LIMIT
+    stmt = select(User).order_by(User.age.desc()).limit(5)
+    users = session.scalars(stmt).all()
+```
+
+### Update and Delete
+
+```python
+with Session(engine) as session:
+    user = session.query(User).filter(User.id == 1).first()
+    if user:
+        user.name = "Ann"
+        session.commit()
+
+with Session(engine) as session:
+    user = session.query(User).filter(User.id == 2).first()
+    if user:
+        session.delete(user)
+        session.commit()
+```
+
+## Core Usage
+
+```python
+from sqlalchemy import create_engine, text
+
+engine = create_engine("excel:///data.xlsx")
+
+with engine.connect() as conn:
+    result = conn.execute(text("SELECT * FROM Sheet1"))
+    for row in result:
+        print(row)
+```
+
+## Schema Inspection
+
+```python
+from sqlalchemy import create_engine, inspect
+
+engine = create_engine("excel:///data.xlsx")
+inspector = inspect(engine)
+
+# List all sheets (tables)
+print(inspector.get_table_names())
+
+# Get column info
+print(inspector.get_columns("Sheet1"))
+
+# Check if a sheet exists
+print(inspector.has_table("Sheet1"))
+```
 
 ## Limitations
 
@@ -58,6 +193,11 @@ engine = create_engine("excel:////home/user/data.xlsx")
 - No subqueries, CTEs, or aggregate functions
 - No ALTER TABLE, foreign keys, or indexes
 - Single-table operations only
+- No concurrent writes — use a single-writer model
+
+## Related Projects
+
+- [excel-dbapi](https://github.com/yeongseon/excel-dbapi) — The underlying PEP 249 DB-API 2.0 driver for Excel files.
 
 ## License
 
