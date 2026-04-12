@@ -8,6 +8,7 @@
 [![PyPI](https://img.shields.io/pypi/v/sqlalchemy-excel.svg)](https://pypi.org/project/sqlalchemy-excel/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Docs](https://img.shields.io/badge/docs-GitHub-blue.svg)](https://github.com/yeongseon/sqlalchemy-excel/tree/main/docs)
 
 SQLAlchemy dialect for Excel files — use Excel as a database.
 
