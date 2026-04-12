@@ -1,5 +1,5 @@
 <p align="left">
-  <img src="logo.svg" alt="sqlalchemy-excel" width="48" height="48" align="middle" />
+  <img src="https://raw.githubusercontent.com/yeongseon/sqlalchemy-excel/main/logo.svg" alt="sqlalchemy-excel" width="48" height="48" align="middle" />
   <strong style="font-size: 2em;">sqlalchemy-excel</strong>
 </p>
 
@@ -197,6 +197,7 @@ print(inspector.has_table("Sheet1"))
 - No ALTER TABLE, foreign keys, or indexes
 - Single-table operations only
 - No concurrent writes — use a single-writer model
+- `Session.rollback()` is a no-op — Excel files do not support transactional rollback
 
 ## Related Projects
 

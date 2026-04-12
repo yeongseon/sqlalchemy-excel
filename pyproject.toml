@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sqlalchemy-excel"
-version = "0.2.0"
+version = "0.2.1"
 description = "SQLAlchemy dialect for Excel files — use Excel as a database"
 readme = "README.md"
 license = {text = "MIT"}
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["sqlalchemy", "excel", "dialect", "database", "openpyxl"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -47,6 +47,7 @@ excel = "sqlalchemy_excel.dialect:ExcelDialect"
 Homepage = "https://github.com/yeongseon/sqlalchemy-excel"
 Repository = "https://github.com/yeongseon/sqlalchemy-excel"
 Issues = "https://github.com/yeongseon/sqlalchemy-excel/issues"
+Changelog = "https://github.com/yeongseon/sqlalchemy-excel/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sqlalchemy_excel"]
