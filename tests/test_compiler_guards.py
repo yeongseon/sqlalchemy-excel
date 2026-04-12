@@ -13,7 +13,9 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
     create_engine,
+    distinct,
     exc,
+    func,
     insert,
     select,
 )
@@ -74,6 +76,18 @@ def test_compiler_cte_subquery_returning_for_update_guards(tmp_xlsx: str) -> Non
         )
     with pytest.raises(exc.CompileError, match="FOR UPDATE"):
         select(users).with_for_update().compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_count_distinct(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    stmt = select(func.count(distinct(users.c.name))).select_from(users)
+    with pytest.raises(exc.CompileError, match="expression arguments"):
+        stmt.compile(dialect=engine.dialect)
 
     engine.dispose()
 

@@ -66,13 +66,29 @@ class ExcelCompiler(compiler.SQLCompiler):
             raise exc.CompileError(
                 f"Excel dialect does not support function: {function_name}"
             )
-        return str(
+        result = str(
             super().visit_function(
                 func,
                 add_to_result_map=add_to_result_map,
                 **kwargs,
             )
         )
+        inner = result[result.index("(") + 1 : result.rindex(")")].strip()
+        if not inner:
+            raise exc.CompileError(
+                f"Excel dialect does not support expression arguments in {function_name}()"
+            )
+
+        upper_inner = inner.upper()
+        if inner != "*" and (
+            "DISTINCT" in upper_inner
+            or any(op in inner for op in ("+", "-", "/", "*", "(", ")", ","))
+        ):
+            raise exc.CompileError(
+                f"Excel dialect does not support expression arguments in {function_name}()"
+            )
+
+        return result
 
     def visit_column(
         self,
