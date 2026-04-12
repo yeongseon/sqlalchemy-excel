@@ -145,6 +145,18 @@ def test_compiler_rejects_window_over(tmp_xlsx: str) -> None:
     engine.dispose()
 
 
+def test_compiler_rejects_aggregate_filter(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    stmt = select(func.count(users.c.id).filter(users.c.id > 0)).select_from(users)
+    with pytest.raises(exc.CompileError, match="FILTER"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
 def test_compiler_visit_label_and_group_by_paths(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()

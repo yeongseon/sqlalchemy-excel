@@ -335,6 +335,26 @@ def test_e2e_group_by_order_by_group_key_not_in_select(tmp_path) -> None:
 
     engine.dispose()
 
+
+def test_e2e_rejects_aggregate_arithmetic_projection(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+
+    with engine.connect() as conn:
+        stmt = select(func.sum(users.c.age) + 1).select_from(users)
+        with pytest.raises(
+            (exc.DBAPIError, ValueError),
+            match="Unsupported column expression",
+        ):
+            conn.execute(stmt).all()
+
+    engine.dispose()
+
 def test_e2e_offset_compiles_and_executes(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()

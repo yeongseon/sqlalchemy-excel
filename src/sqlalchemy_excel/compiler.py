@@ -261,3 +261,12 @@ class ExcelCompiler(compiler.SQLCompiler):
         raise exc.CompileError(
             "Excel dialect does not support window functions (OVER)"
         )
+
+    def visit_funcfilter(
+        self,
+        funcfilter: Any,
+        **kwargs: Any,
+    ) -> Any:
+        raise exc.CompileError(
+            "Excel dialect does not support aggregate FILTER clause"
+        )
