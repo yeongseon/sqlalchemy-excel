@@ -11,7 +11,7 @@ Supported:
     DELETE FROM table [WHERE ...]
 
     Rejected (raises CompileError):
-    CTEs, window functions, RETURNING, JOIN, subqueries, FOR UPDATE
+    CTEs, UNION/INTERSECT/EXCEPT, window functions, RETURNING, JOIN, subqueries, FOR UPDATE
 
 excel-dbapi's parser uses unquoted, unprefixed column names:
     SELECT id, name FROM users          (correct)
@@ -241,3 +241,23 @@ class ExcelCompiler(compiler.SQLCompiler):
         **kw: Any,
     ) -> Literal[" FOR UPDATE"]:
         raise exc.CompileError("Excel dialect does not support SELECT ... FOR UPDATE")
+
+    def visit_compound_select(
+        self,
+        cs: Any,
+        asfrom: Any = False,
+        compound_index: Any = None,
+        **kwargs: Any,
+    ) -> str:
+        raise exc.CompileError(
+            "Excel dialect does not support UNION/INTERSECT/EXCEPT"
+        )
+
+    def visit_over(
+        self,
+        over: Any,
+        **kwargs: Any,
+    ) -> str:
+        raise exc.CompileError(
+            "Excel dialect does not support window functions (OVER)"
+        )

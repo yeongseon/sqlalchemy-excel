@@ -18,6 +18,7 @@ from sqlalchemy import (
     func,
     insert,
     select,
+    union_all,
 )
 from sqlalchemy.engine import make_url
 from sqlalchemy.schema import (
@@ -115,6 +116,30 @@ def test_compiler_rejects_count_string_literal(tmp_xlsx: str) -> None:
 
     stmt = select(func.count(literal("x"))).select_from(users)
     with pytest.raises(exc.CompileError, match="expression arguments"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_union(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    stmt = union_all(select(users.c.id), select(users.c.id))
+    with pytest.raises(exc.CompileError, match=r"UNION|INTERSECT|EXCEPT"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_window_over(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    stmt = select(func.count().over()).select_from(users)
+    with pytest.raises(exc.CompileError, match="window functions"):
         stmt.compile(dialect=engine.dialect)
 
     engine.dispose()
