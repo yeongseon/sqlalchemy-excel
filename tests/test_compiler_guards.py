@@ -45,7 +45,7 @@ def _build_tables(metadata: MetaData) -> tuple[Table, Table]:
     return users, orders
 
 
-def test_compiler_join_group_by_having_guards(tmp_xlsx: str) -> None:
+def test_compiler_join_guard(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, orders = _build_tables(metadata)
@@ -54,10 +54,6 @@ def test_compiler_join_group_by_having_guards(tmp_xlsx: str) -> None:
         select(users).join(orders, users.c.id == orders.c.user_id).compile(
             dialect=engine.dialect
         )
-    with pytest.raises(exc.CompileError, match="GROUP BY"):
-        select(users.c.name).group_by(users.c.name).compile(dialect=engine.dialect)
-    with pytest.raises(exc.CompileError, match="HAVING"):
-        select(users.c.id).having(users.c.id > 0).compile(dialect=engine.dialect)
     engine.dispose()
 
 
@@ -82,7 +78,7 @@ def test_compiler_cte_subquery_returning_for_update_guards(tmp_xlsx: str) -> Non
     engine.dispose()
 
 
-def test_compiler_visit_label_and_group_by_empty_path(tmp_xlsx: str) -> None:
+def test_compiler_visit_label_and_group_by_paths(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, _ = _build_tables(metadata)
@@ -102,6 +98,10 @@ def test_compiler_visit_label_and_group_by_empty_path(tmp_xlsx: str) -> None:
     plain_select = select(users.c.id)
     plain_compiled = plain_select.compile(dialect=engine.dialect)
     assert plain_compiled.group_by_clause(plain_select) == ""
+
+    gb_select = select(users.c.id).group_by(users.c.id)
+    gb_compiled = gb_select.compile(dialect=engine.dialect)
+    assert "GROUP BY" in gb_compiled.group_by_clause(gb_select)
 
     preparer = engine.dialect.identifier_preparer
     assert preparer.quote_identifier("users") == "users"

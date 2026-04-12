@@ -178,21 +178,96 @@ def test_e2e_join_is_rejected(tmp_path) -> None:
     engine.dispose()
 
 
-def test_e2e_count_query_is_rejected_by_compiler(tmp_path) -> None:
+def test_e2e_aggregate_count(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
     users = _users_table(metadata)
+    metadata.create_all(engine)
 
-    stmt = (
-        select(func.count(users.c.id))
-        .select_from(users)
-        .having(func.count(users.c.id) > 0)
-    )
-    with pytest.raises(exc.CompileError, match="HAVING"):
-        stmt.compile(dialect=engine.dialect)
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(users).values(id=3, name="Alice", age=35))
+
+    with engine.connect() as conn:
+        stmt = select(func.count(users.c.id)).select_from(users)
+        result = conn.execute(stmt).scalar_one()
+        assert result == 3
 
     engine.dispose()
 
+
+def test_e2e_aggregate_sum_avg_min_max(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=20))
+        conn.execute(insert(users).values(id=3, name="Charlie", age=40))
+
+    with engine.connect() as conn:
+        stmt = select(func.sum(users.c.age)).select_from(users)
+        assert conn.execute(stmt).scalar_one() == 90
+
+        stmt = select(func.avg(users.c.age)).select_from(users)
+        assert conn.execute(stmt).scalar_one() == 30.0
+
+        stmt = select(func.min(users.c.age)).select_from(users)
+        assert conn.execute(stmt).scalar_one() == 20
+
+        stmt = select(func.max(users.c.age)).select_from(users)
+        assert conn.execute(stmt).scalar_one() == 40
+
+    engine.dispose()
+
+
+def test_e2e_group_by(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(users).values(id=3, name="Alice", age=35))
+
+    with engine.connect() as conn:
+        stmt = (
+            select(users.c.name, func.count(users.c.id))
+            .group_by(users.c.name)
+            .order_by(users.c.name)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [("Alice", 2), ("Bob", 1)]
+
+    engine.dispose()
+
+
+def test_e2e_group_by_having(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(users).values(id=3, name="Alice", age=35))
+
+    with engine.connect() as conn:
+        stmt = (
+            select(users.c.name, func.count(users.c.id))
+            .group_by(users.c.name)
+            .having(func.count(users.c.id) > 1)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [("Alice", 2)]
+
+    engine.dispose()
 
 def test_e2e_offset_compiles_and_executes(tmp_path) -> None:
     engine = _engine_for(tmp_path)

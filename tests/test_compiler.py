@@ -123,7 +123,38 @@ class TestCompilationRejection:
         with pytest.raises(exc.CompileError, match="JOIN"):
             stmt.compile(dialect=excel_engine.dialect)
 
-    def test_group_by_rejected(self, excel_engine, users_table):
+    def test_group_by_compiles(self, excel_engine, users_table):
         stmt = select(users_table.c.name).group_by(users_table.c.name)
-        with pytest.raises(exc.CompileError, match="GROUP BY"):
-            stmt.compile(dialect=excel_engine.dialect)
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "GROUP BY" in sql
+        assert "name" in sql
+
+    def test_having_compiles(self, excel_engine, users_table):
+        from sqlalchemy import func
+
+        stmt = (
+            select(users_table.c.name, func.count(users_table.c.id))
+            .group_by(users_table.c.name)
+            .having(func.count(users_table.c.id) > 1)
+        )
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "GROUP BY" in sql
+        assert "HAVING" in sql
+
+    def test_aggregate_count_compiles(self, excel_engine, users_table):
+        from sqlalchemy import func
+
+        stmt = select(func.count(users_table.c.id)).select_from(users_table)
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "count" in sql.lower()
+
+    def test_aggregate_sum_compiles(self, excel_engine, users_table):
+        from sqlalchemy import func
+
+        stmt = select(func.sum(users_table.c.age)).select_from(users_table)
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "sum" in sql.lower()

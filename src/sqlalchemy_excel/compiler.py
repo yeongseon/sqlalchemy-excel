@@ -4,14 +4,14 @@ Compiles SQLAlchemy expression trees into the SQL subset that
 excel-dbapi's parser understands:
 
 Supported:
-    SELECT columns FROM table [WHERE ...] [ORDER BY col [ASC|DESC]] [LIMIT n] [OFFSET n]
+    SELECT columns FROM table [WHERE ...] [GROUP BY ...] [HAVING ...] [ORDER BY col [ASC|DESC]] [LIMIT n] [OFFSET n]
     SELECT DISTINCT columns FROM table [WHERE ...] ...
     INSERT INTO table (cols) VALUES (vals)
     UPDATE table SET col=val [WHERE ...]
     DELETE FROM table [WHERE ...]
 
     Rejected (raises CompileError):
-    CTEs, aggregate functions, window functions, RETURNING
+    CTEs, window functions, RETURNING, JOIN, subqueries, FOR UPDATE
 
 excel-dbapi's parser uses unquoted, unprefixed column names:
     SELECT id, name FROM users          (correct)
@@ -142,9 +142,7 @@ class ExcelCompiler(compiler.SQLCompiler):
         raise exc.CompileError("Excel dialect does not support JOIN")
 
     def group_by_clause(self, select: Any, **kw: Any) -> str:
-        if select._group_by_clauses:
-            raise exc.CompileError("Excel dialect does not support GROUP BY")
-        return ""
+        return str(super().group_by_clause(select, **kw))  # type: ignore[no-untyped-call]
 
     def _compose_select_body(
         self,
@@ -157,8 +155,6 @@ class ExcelCompiler(compiler.SQLCompiler):
         toplevel: bool,
         kwargs: Any,
     ) -> str:
-        if getattr(select, "_having_criteria", None):
-            raise exc.CompileError("Excel dialect does not support HAVING")
         return str(
             super()._compose_select_body(  # type: ignore[no-untyped-call]
                 text,
