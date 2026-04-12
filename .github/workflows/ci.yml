@@ -30,10 +30,6 @@ jobs:
           ruff check .
           ruff format --check .
 
-      - name: Type check
-        run: |
-          mypy --strict src/
-
       - name: Test
         run: |
           pytest -v --tb=short

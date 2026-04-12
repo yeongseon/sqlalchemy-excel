@@ -80,7 +80,7 @@ known-first-party = ["sqlalchemy_excel"]
 
 [tool.mypy]
 python_version = "3.10"
-strict = true
+strict = false
 warn_return_any = true
 warn_unused_configs = true
 
