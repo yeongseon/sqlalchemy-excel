@@ -29,7 +29,7 @@ import re
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from sqlalchemy import exc
-from sqlalchemy.sql import compiler, elements, operators, visitors
+from sqlalchemy.sql import compiler, dml, elements, operators, visitors
 
 if TYPE_CHECKING:
     from collections.abc import Callable, MutableMapping
@@ -250,6 +250,11 @@ class ExcelCompiler(compiler.SQLCompiler):
                 "Excel dialect only supports subqueries in WHERE ... IN"
             )
 
+        if isinstance(self.statement, dml.UpdateBase):
+            raise exc.CompileError(
+                "Excel dialect does not support subqueries in UPDATE/DELETE"
+            )
+
         inner = getattr(subquery, "element", None)
         if inner is not None:
             self._reject_correlated_subquery(inner)
@@ -267,6 +272,12 @@ class ExcelCompiler(compiler.SQLCompiler):
                 raise exc.CompileError(
                     "Excel dialect only supports subqueries in WHERE ... IN"
                 )
+
+            if isinstance(self.statement, dml.UpdateBase):
+                raise exc.CompileError(
+                    "Excel dialect does not support subqueries in UPDATE/DELETE"
+                )
+
             self._reject_correlated_subquery(element)
             kwargs["literal_binds"] = True
         visit_grouping = cast("Callable[..., str]", super().visit_grouping)

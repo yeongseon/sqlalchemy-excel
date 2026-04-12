@@ -212,6 +212,30 @@ def test_compiler_rejects_not_in_subquery(tmp_xlsx: str) -> None:
         stmt.compile(dialect=engine.dialect)
     engine.dispose()
 
+def test_compiler_rejects_update_with_subquery(tmp_xlsx: str) -> None:
+    """UPDATE with IN subquery should be rejected."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    sub = select(orders.c.user_id)
+    stmt = users.update().where(users.c.id.in_(sub)).values(name="x")
+    with pytest.raises(exc.CompileError, match="does not support subqueries in UPDATE/DELETE"):
+        stmt.compile(dialect=engine.dialect)
+    engine.dispose()
+
+
+def test_compiler_rejects_delete_with_subquery(tmp_xlsx: str) -> None:
+    """DELETE with IN subquery should be rejected."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    sub = select(orders.c.user_id)
+    stmt = users.delete().where(users.c.id.in_(sub))
+    with pytest.raises(exc.CompileError, match="does not support subqueries in UPDATE/DELETE"):
+        stmt.compile(dialect=engine.dialect)
+    engine.dispose()
 
 def test_compiler_visit_label_and_group_by_paths(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
