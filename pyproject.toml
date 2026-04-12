@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sqlalchemy-excel"
-version = "0.3.1"
+version = "0.3.2"
 description = "SQLAlchemy dialect for Excel files — use Excel as a database"
 readme = "README.md"
 license = {text = "MIT"}

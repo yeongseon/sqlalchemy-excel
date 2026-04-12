@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.2] - 2026-04-12
+
+### Fixed
+- Install `graph` extras in CI to resolve `httpx` ModuleNotFoundError
+- Use `pytest.importorskip("httpx")` in Graph dialect tests for graceful skip when extras not installed
+
 ## [0.3.1] - 2026-04-12
 
 ### Fixed

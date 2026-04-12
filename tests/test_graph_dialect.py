@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import httpx
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.dialects import registry
 from sqlalchemy.engine import make_url
+
+httpx = pytest.importorskip("httpx")
 
 # ---------------------------------------------------------------------------
 # Mock transport (minimal Graph API stub)
