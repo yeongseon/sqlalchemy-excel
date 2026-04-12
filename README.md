@@ -56,6 +56,33 @@ engine = create_engine("excel:////home/user/data.xlsx")
 engine = create_engine("excel:///data.xlsx", connect_args={"engine": "openpyxl"})
 ```
 
+## Remote Excel via Microsoft Graph API
+
+Access Excel files on OneDrive/SharePoint directly:
+
+```bash
+pip install sqlalchemy-excel[graph]
+```
+
+```python
+from sqlalchemy import create_engine
+from azure.identity import DefaultAzureCredential
+
+engine = create_engine(
+    "excel+graph:///drive_id/item_id",
+    connect_args={"credential": DefaultAzureCredential()},
+)
+
+with engine.connect() as conn:
+    result = conn.execute(text("SELECT * FROM Sheet1"))
+    for row in result:
+        print(row)
+```
+
+URL format: `excel+graph:///drive_id/item_id` where `drive_id` and `item_id` are Microsoft Graph resource identifiers.
+Query parameters: `?readonly=false` to enable write operations.
+
+
 ## Features
 
 - Full SQLAlchemy 2.0 dialect

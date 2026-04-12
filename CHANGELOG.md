@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0] - 2026-04-12
+
+### Added
+- `ExcelGraphDialect` for remote Excel files via Microsoft Graph API
+- `excel+graph:///drive_id/item_id` URL scheme support
+- Entry point `excel.graph` for SQLAlchemy dialect resolution
+- Optional dependency: `pip install sqlalchemy-excel[graph]`
+- URL percent-decoding for drive/item IDs with special characters
+- `readonly` query parameter forwarding to Graph backend
+- Comprehensive Graph dialect tests with `httpx.MockTransport`
+- `docs/` directory with USAGE.md, DEVELOPMENT.md, and ROADMAP.md
+
+### Changed
+- Version bumped to 0.3.0
+
 ## [0.2.2] - 2026-04-12
 
 ### Fixed
