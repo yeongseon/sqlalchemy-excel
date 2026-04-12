@@ -237,6 +237,26 @@ def test_compiler_rejects_delete_with_subquery(tmp_xlsx: str) -> None:
         stmt.compile(dialect=engine.dialect)
     engine.dispose()
 
+
+def test_compiler_rejects_nested_subquery(tmp_xlsx: str) -> None:
+    """Nested subquery inside IN should be rejected at compile time."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+    items = Table(
+        "items",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("order_id", Integer),
+    )
+
+    inner = select(items.c.order_id).where(items.c.id > 0)
+    outer = select(orders.c.user_id).where(orders.c.id.in_(inner))
+    stmt = select(users).where(users.c.id.in_(outer))
+    with pytest.raises(exc.CompileError, match="nested subqueries"):
+        stmt.compile(dialect=engine.dialect)
+    engine.dispose()
+
 def test_compiler_visit_label_and_group_by_paths(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()

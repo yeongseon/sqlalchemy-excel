@@ -60,6 +60,7 @@ class ExcelCompiler(compiler.SQLCompiler):
     """Compiles SQLAlchemy SQL expressions for excel-dbapi."""
 
     _in_in_clause: bool = False
+    _subquery_depth: int = 0
 
     def _reject_correlated_subquery(self, inner: Any) -> None:
         inner_tables = {
@@ -67,9 +68,22 @@ class ExcelCompiler(compiler.SQLCompiler):
             for from_obj in inner.columns_clause_froms
             if hasattr(from_obj, "name")
         }
+        # Collect tables referenced by nested subqueries so we skip them.
+        # We only want to check correlations at the immediate level.
+        nested_subquery_tables: set[str] = set()
+        for elem in visitors.iterate(inner):
+            visit_name = getattr(elem, "__visit_name__", None)
+            if visit_name in ("select", "subquery") and elem is not inner:
+                # Gather all table names from this nested scope
+                for nested_elem in visitors.iterate(elem):
+                    nested_tbl = getattr(nested_elem, "table", None)
+                    if nested_tbl is not None and hasattr(nested_tbl, "name"):
+                        nested_subquery_tables.add(nested_tbl.name)
         for elem in visitors.iterate(inner):
             table = getattr(elem, "table", None)
             if table is None or not hasattr(table, "name"):
+                continue
+            if table.name in nested_subquery_tables:
                 continue
             if table.name not in inner_tables:
                 raise exc.CompileError(
@@ -250,6 +264,11 @@ class ExcelCompiler(compiler.SQLCompiler):
                 "Excel dialect only supports subqueries in WHERE ... IN"
             )
 
+        if self._subquery_depth > 0:
+            raise exc.CompileError(
+                "Excel dialect does not support nested subqueries"
+            )
+
         if isinstance(self.statement, dml.UpdateBase):
             raise exc.CompileError(
                 "Excel dialect does not support subqueries in UPDATE/DELETE"
@@ -259,18 +278,28 @@ class ExcelCompiler(compiler.SQLCompiler):
         if inner is not None:
             self._reject_correlated_subquery(inner)
 
-        kw["literal_binds"] = True
-        visit_subquery = cast("Callable[..., str]", super().visit_subquery)
-        return str(visit_subquery(subquery, **kw))
+        self._subquery_depth += 1
+        try:
+            kw["literal_binds"] = True
+            visit_subquery = cast("Callable[..., str]", super().visit_subquery)
+            return str(visit_subquery(subquery, **kw))
+        finally:
+            self._subquery_depth -= 1
 
     def visit_grouping(
         self, grouping: Any, asfrom: bool = False, **kwargs: Any
     ) -> str:
         element = getattr(grouping, "element", None)
-        if getattr(element, "__visit_name__", None) == "select":
+        is_subquery_select = getattr(element, "__visit_name__", None) == "select"
+        if is_subquery_select:
             if not self._in_in_clause:
                 raise exc.CompileError(
                     "Excel dialect only supports subqueries in WHERE ... IN"
+                )
+
+            if self._subquery_depth > 0:
+                raise exc.CompileError(
+                    "Excel dialect does not support nested subqueries"
                 )
 
             if isinstance(self.statement, dml.UpdateBase):
@@ -280,8 +309,15 @@ class ExcelCompiler(compiler.SQLCompiler):
 
             self._reject_correlated_subquery(element)
             kwargs["literal_binds"] = True
-        visit_grouping = cast("Callable[..., str]", super().visit_grouping)
-        return str(visit_grouping(grouping, asfrom=asfrom, **kwargs))
+
+        if is_subquery_select:
+            self._subquery_depth += 1
+        try:
+            visit_grouping = cast("Callable[..., str]", super().visit_grouping)
+            return str(visit_grouping(grouping, asfrom=asfrom, **kwargs))
+        finally:
+            if is_subquery_select:
+                self._subquery_depth -= 1
 
     def visit_binary(
         self,

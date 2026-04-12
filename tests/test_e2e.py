@@ -451,3 +451,31 @@ def test_e2e_distinct_compiles_and_executes(tmp_path) -> None:
         assert sorted(names) == ["Alice", "Bob"]
 
     engine.dispose()
+
+
+def test_e2e_nested_subquery_rejected(tmp_path) -> None:
+    """Nested subquery should fail at compile time, not just at DB-API level."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    admins = Table(
+        "admins",
+        metadata,
+        Column("id", Integer, primary_key=True),
+    )
+    items = Table(
+        "items",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("admin_id", Integer),
+    )
+    metadata.create_all(engine)
+
+    inner = select(items.c.admin_id).where(items.c.id > 0)
+    outer = select(admins.c.id).where(admins.c.id.in_(inner))
+    stmt = select(users).where(users.c.id.in_(outer))
+    with pytest.raises(exc.CompileError, match="nested subqueries"):
+        with engine.connect() as conn:
+            conn.execute(stmt).all()
+
+    engine.dispose()
