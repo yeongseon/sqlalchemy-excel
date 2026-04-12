@@ -1,0 +1,70 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in sqlalchemy-excel
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug in `sqlalchemy-excel`!
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: A clear description of the bug
+      placeholder: What happened while using the SQLAlchemy Excel dialect? What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-state
+    attributes:
+      label: Current State
+      description: Describe current behavior and relevant context
+      placeholder: |
+        - What is happening now?
+        - Any error messages or logs?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Install sqlalchemy-excel...
+        2. Run code/query...
+        3. See error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-outcome
+    attributes:
+      label: Expected Outcome
+      description: What should happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Your environment details
+      placeholder: |
+        - Python version:
+        - SQLAlchemy version:
+        - sqlalchemy-excel version:
+        - OS:
+    validations:
+      required: false
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Any related files, links, or resources
+    validations:
+      required: false
