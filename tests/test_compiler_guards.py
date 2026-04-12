@@ -154,6 +154,30 @@ def test_compiler_rejects_aggregate_filter(tmp_xlsx: str) -> None:
     engine.dispose()
 
 
+def test_compiler_rejects_scalar_subquery(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    scalar_sub = select(func.max(orders.c.user_id)).scalar_subquery()
+    stmt = select(users).where(users.c.id == scalar_sub)
+    with pytest.raises(exc.CompileError, match="only supports subqueries in WHERE"):
+        stmt.compile(dialect=engine.dialect)
+    engine.dispose()
+
+
+def test_compiler_rejects_from_subquery(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    sub = select(users.c.id).subquery()
+    stmt = select(sub.c.id)
+    with pytest.raises(exc.CompileError, match="only supports subqueries in WHERE"):
+        stmt.compile(dialect=engine.dialect)
+    engine.dispose()
+
+
 def test_compiler_visit_label_and_group_by_paths(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()

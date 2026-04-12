@@ -29,7 +29,7 @@ import re
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from sqlalchemy import exc
-from sqlalchemy.sql import compiler, elements
+from sqlalchemy.sql import compiler, elements, operators
 
 if TYPE_CHECKING:
     from collections.abc import Callable, MutableMapping
@@ -58,6 +58,8 @@ class ExcelIdentifierPreparer(compiler.IdentifierPreparer):
 
 class ExcelCompiler(compiler.SQLCompiler):
     """Compiles SQLAlchemy SQL expressions for excel-dbapi."""
+
+    _in_in_clause: bool = False
 
     def visit_function(
         self,
@@ -228,8 +230,62 @@ class ExcelCompiler(compiler.SQLCompiler):
         raise exc.CompileError("Excel dialect does not support CTEs")
 
     def visit_subquery(self, subquery: Any, **kw: Any) -> str:
+        if not self._in_in_clause:
+            raise exc.CompileError(
+                "Excel dialect only supports subqueries in WHERE ... IN"
+            )
         visit_subquery = cast("Callable[..., str]", super().visit_subquery)
         return str(visit_subquery(subquery, **kw))
+
+    def visit_grouping(
+        self, grouping: Any, asfrom: bool = False, **kwargs: Any
+    ) -> str:
+        element = getattr(grouping, "element", None)
+        if getattr(element, "__visit_name__", None) == "select" and not self._in_in_clause:
+            raise exc.CompileError(
+                "Excel dialect only supports subqueries in WHERE ... IN"
+            )
+        visit_grouping = cast("Callable[..., str]", super().visit_grouping)
+        return str(visit_grouping(grouping, asfrom=asfrom, **kwargs))
+
+    def visit_binary(
+        self,
+        binary: Any,
+        override_operator: Any = None,
+        eager_grouping: bool = False,
+        from_linter: Any = None,
+        lateral_from_linter: Any = None,
+        **kw: Any,
+    ) -> str:
+        binary_operator = override_operator or binary.operator
+        in_context = binary_operator in {operators.in_op, operators.not_in_op}
+        visit_binary = cast("Callable[..., str]", super().visit_binary)
+        if not in_context:
+            return str(
+                visit_binary(
+                    binary,
+                    override_operator=override_operator,
+                    eager_grouping=eager_grouping,
+                    from_linter=from_linter,
+                    lateral_from_linter=lateral_from_linter,
+                    **kw,
+                )
+            )
+
+        self._in_in_clause = True
+        try:
+            return str(
+                visit_binary(
+                    binary,
+                    override_operator=override_operator,
+                    eager_grouping=eager_grouping,
+                    from_linter=from_linter,
+                    lateral_from_linter=lateral_from_linter,
+                    **kw,
+                )
+            )
+        finally:
+            self._in_in_clause = False
 
     def returning_clause(
         self,
