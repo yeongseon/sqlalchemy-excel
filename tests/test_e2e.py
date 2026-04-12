@@ -206,6 +206,35 @@ def test_e2e_subquery_in_where(tmp_path) -> None:
     engine.dispose()
 
 
+def test_e2e_subquery_with_inner_where(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    admins = Table(
+        "admins",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("role", String),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(users).values(id=3, name="Charlie", age=35))
+        conn.execute(insert(admins).values(id=1, role="admin"))
+        conn.execute(insert(admins).values(id=3, role="editor"))
+
+    with engine.connect() as conn:
+        stmt = select(users.c.id, users.c.name).where(
+            users.c.id.in_(select(admins.c.id).where(admins.c.role == "admin"))
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [(1, "Alice")]
+
+    engine.dispose()
+
+
 def test_e2e_aggregate_count(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()

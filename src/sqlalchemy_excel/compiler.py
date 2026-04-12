@@ -11,7 +11,7 @@ Supported:
     DELETE FROM table [WHERE ...]
 
     Rejected (raises CompileError):
-    CTEs, UNION/INTERSECT/EXCEPT, window functions, RETURNING, JOIN, FOR UPDATE
+    CTEs, UNION/INTERSECT/EXCEPT, window functions, RETURNING, JOIN, FOR UPDATE, NOT IN
 
     Partially supported:
     non-correlated subqueries in WHERE ... IN (SELECT single_col FROM table [WHERE ...])
@@ -29,7 +29,7 @@ import re
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from sqlalchemy import exc
-from sqlalchemy.sql import compiler, elements, operators
+from sqlalchemy.sql import compiler, elements, operators, visitors
 
 if TYPE_CHECKING:
     from collections.abc import Callable, MutableMapping
@@ -60,6 +60,21 @@ class ExcelCompiler(compiler.SQLCompiler):
     """Compiles SQLAlchemy SQL expressions for excel-dbapi."""
 
     _in_in_clause: bool = False
+
+    def _reject_correlated_subquery(self, inner: Any) -> None:
+        inner_tables = {
+            from_obj.name
+            for from_obj in inner.columns_clause_froms
+            if hasattr(from_obj, "name")
+        }
+        for elem in visitors.iterate(inner):
+            table = getattr(elem, "table", None)
+            if table is None or not hasattr(table, "name"):
+                continue
+            if table.name not in inner_tables:
+                raise exc.CompileError(
+                    "Excel dialect does not support correlated subqueries"
+                )
 
     def visit_function(
         self,
@@ -234,6 +249,12 @@ class ExcelCompiler(compiler.SQLCompiler):
             raise exc.CompileError(
                 "Excel dialect only supports subqueries in WHERE ... IN"
             )
+
+        inner = getattr(subquery, "element", None)
+        if inner is not None:
+            self._reject_correlated_subquery(inner)
+
+        kw["literal_binds"] = True
         visit_subquery = cast("Callable[..., str]", super().visit_subquery)
         return str(visit_subquery(subquery, **kw))
 
@@ -241,10 +262,13 @@ class ExcelCompiler(compiler.SQLCompiler):
         self, grouping: Any, asfrom: bool = False, **kwargs: Any
     ) -> str:
         element = getattr(grouping, "element", None)
-        if getattr(element, "__visit_name__", None) == "select" and not self._in_in_clause:
-            raise exc.CompileError(
-                "Excel dialect only supports subqueries in WHERE ... IN"
-            )
+        if getattr(element, "__visit_name__", None) == "select":
+            if not self._in_in_clause:
+                raise exc.CompileError(
+                    "Excel dialect only supports subqueries in WHERE ... IN"
+                )
+            self._reject_correlated_subquery(element)
+            kwargs["literal_binds"] = True
         visit_grouping = cast("Callable[..., str]", super().visit_grouping)
         return str(visit_grouping(grouping, asfrom=asfrom, **kwargs))
 
@@ -258,7 +282,7 @@ class ExcelCompiler(compiler.SQLCompiler):
         **kw: Any,
     ) -> str:
         binary_operator = override_operator or binary.operator
-        in_context = binary_operator in {operators.in_op, operators.not_in_op}
+        in_context = binary_operator is operators.in_op
         visit_binary = cast("Callable[..., str]", super().visit_binary)
         if not in_context:
             return str(
@@ -286,6 +310,9 @@ class ExcelCompiler(compiler.SQLCompiler):
             )
         finally:
             self._in_in_clause = False
+
+    def visit_not_in_op_binary(self, binary: Any, operator: Any, **kw: Any) -> str:
+        raise exc.CompileError("Excel dialect does not support NOT IN")
 
     def returning_clause(
         self,

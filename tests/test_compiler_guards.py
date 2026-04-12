@@ -178,6 +178,41 @@ def test_compiler_rejects_from_subquery(tmp_xlsx: str) -> None:
     engine.dispose()
 
 
+def test_compiler_rejects_correlated_subquery(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    correlated = select(orders.c.user_id).where(orders.c.user_id == users.c.id)
+    stmt = select(users).where(users.c.id.in_(correlated))
+    with pytest.raises(exc.CompileError, match="correlated"):
+        stmt.compile(dialect=engine.dialect)
+    engine.dispose()
+
+
+def test_compiler_rejects_not_in(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    stmt = select(users).where(users.c.id.not_in([1, 2, 3]))
+    with pytest.raises(exc.CompileError, match="NOT IN"):
+        stmt.compile(dialect=engine.dialect)
+    engine.dispose()
+
+
+def test_compiler_rejects_not_in_subquery(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    sub = select(orders.c.user_id)
+    stmt = select(users).where(users.c.id.not_in(sub))
+    with pytest.raises(exc.CompileError, match="NOT IN"):
+        stmt.compile(dialect=engine.dialect)
+    engine.dispose()
+
+
 def test_compiler_visit_label_and_group_by_paths(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
