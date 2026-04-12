@@ -490,3 +490,26 @@ def test_compiler_rejects_join_with_subquery(tmp_xlsx: str) -> None:
         stmt.compile(dialect=engine.dialect)
 
     engine.dispose()
+
+
+def test_compiler_rejects_subquery_containing_join(tmp_xlsx: str) -> None:
+    """Subquery that itself contains a JOIN should be rejected at compile time."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+    admins = Table(
+        "admins",
+        metadata,
+        Column("id", Integer, primary_key=True),
+    )
+
+    # Subquery: SELECT users.id FROM users JOIN orders ON users.id = orders.user_id
+    inner_join_subquery = (
+        select(users.c.id)
+        .join(orders, users.c.id == orders.c.user_id)
+    )
+    stmt = select(admins.c.id).where(admins.c.id.in_(inner_join_subquery))
+    with pytest.raises(exc.CompileError, match="JOIN inside subqueries"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()

@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from sqlalchemy import exc
 from sqlalchemy.sql import compiler, dml, elements, operators, visitors
+from sqlalchemy.sql.expression import Join
 
 if TYPE_CHECKING:
     from collections.abc import Callable, MutableMapping
@@ -76,8 +77,6 @@ class ExcelCompiler(compiler.SQLCompiler):
         lateral: Any,
         compound_index: Any,
     ) -> Any:
-        from sqlalchemy.sql.expression import Join
-
         froms = super()._setup_select_stack(
             select, compile_state, entry, asfrom, lateral, compound_index
         )
@@ -336,6 +335,12 @@ class ExcelCompiler(compiler.SQLCompiler):
 
         inner = getattr(subquery, "element", None)
         if inner is not None:
+            # Reject subqueries that themselves contain a JOIN
+            for from_clause in inner.get_final_froms():
+                if isinstance(from_clause, Join):
+                    raise exc.CompileError(
+                        "Excel dialect does not support JOIN inside subqueries"
+                    )
             self._reject_correlated_subquery(inner)
 
         self._subquery_depth += 1
@@ -372,6 +377,13 @@ class ExcelCompiler(compiler.SQLCompiler):
                     "Excel dialect does not support subqueries in UPDATE/DELETE"
                 )
 
+            assert element is not None  # guaranteed by is_subquery_select check
+            # Reject subqueries that themselves contain a JOIN
+            for from_clause in element.get_final_froms():
+                if isinstance(from_clause, Join):
+                    raise exc.CompileError(
+                        "Excel dialect does not support JOIN inside subqueries"
+                    )
             self._reject_correlated_subquery(element)
             kwargs["literal_binds"] = True
 
