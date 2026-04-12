@@ -1,4 +1,7 @@
-# sqlalchemy-excel
+<p align="left">
+  <img src="logo.svg" alt="sqlalchemy-excel" width="48" height="48" align="middle" />
+  <strong style="font-size: 2em;">sqlalchemy-excel</strong>
+</p>
 
 ![CI](https://github.com/yeongseon/sqlalchemy-excel/actions/workflows/ci.yml/badge.svg)
 [![codecov](https://codecov.io/gh/yeongseon/sqlalchemy-excel/branch/main/graph/badge.svg)](https://codecov.io/gh/yeongseon/sqlalchemy-excel)
