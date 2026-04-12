@@ -83,15 +83,12 @@ with engine.connect() as conn:
     result = conn.execute(text("SELECT * FROM Sheet1"))
     for row in result:
         print(row)
-    
-    # Parameterized query (always use this for security)
-    result = conn.execute(
-        text("SELECT * FROM users WHERE name = :name"),
-        {"name": "Alice"}
-    )
-    for row in result:
-        print(row)
 ```
+
+> **Note**: excel-dbapi uses **qmark paramstyle** (`?`). When using `text()` queries,
+> SQLAlchemy handles parameter translation automatically — you can use either `:name`
+> style (SQLAlchemy translates it) or pass parameters directly. However, the underlying
+> driver only understands `?` placeholders.
 
 ## Query Examples
 
@@ -103,7 +100,7 @@ from sqlalchemy import select
 with Session(engine) as session:
     # Simple equality
     user = session.query(User).filter(User.name == "Alice").first()
-    
+
     # Comparison operators
     stmt = select(User).where(User.age > 25)
     users = session.scalars(stmt).all()
@@ -133,7 +130,7 @@ with Session(engine) as session:
     # Find users whose name starts with 'A'
     stmt = select(User).where(User.name.like("A%"))
     users = session.scalars(stmt).all()
-    
+
     # Contains 'li'
     stmt = select(User).where(User.name.like("%li%"))
     users = session.scalars(stmt).all()
@@ -146,7 +143,7 @@ with Session(engine) as session:
     # Order by age descending
     stmt = select(User).order_by(User.age.desc())
     users = session.scalars(stmt).all()
-    
+
     # Get top 5 oldest users
     stmt = select(User).order_by(User.age.desc()).limit(5)
     users = session.scalars(stmt).all()
@@ -230,21 +227,26 @@ sqlalchemy-excel maps SQLAlchemy types to Excel storage types:
 sqlalchemy-excel has some limitations due to the nature of Excel as a database:
 
 - **No JOIN operations**: Single-table queries only
-- **No GROUP BY, HAVING, DISTINCT**: Aggregations not supported
+- **No GROUP BY, HAVING**: HAVING raises `CompileError` at compile time; GROUP BY is not supported
+- **No DISTINCT**: Not supported
 - **No OFFSET**: Only LIMIT is supported
 - **No subqueries or CTEs**: Simple queries only
 - **No aggregate functions**: COUNT, SUM, AVG, etc. not available
 - **No ALTER TABLE**: Cannot modify table structure after creation
 - **No foreign keys or indexes**: Excel has no concept of these
 - **No concurrent writes**: Use a single-writer model
-- **Rollback is a no-op**: `Session.rollback()` does nothing — Excel files don't support transactional rollback
+- **Rollback is a no-op**: `Session.rollback()` does nothing — the underlying driver's rollback only works at the DB-API connection level with `autocommit=False`
 
 ## Security
 
 **Always use parameterized queries** to prevent SQL injection:
 
 ```python
-# ✅ GOOD: Parameterized query
+# ✅ GOOD: ORM queries are automatically parameterized
+with Session(engine) as session:
+    user = session.query(User).filter(User.name == user_input).first()
+
+# ✅ GOOD: Core text() with bound parameters
 with engine.connect() as conn:
     result = conn.execute(
         text("SELECT * FROM users WHERE name = :name"),
@@ -256,12 +258,4 @@ with engine.connect() as conn:
     result = conn.execute(
         text(f"SELECT * FROM users WHERE name = '{user_input}'")
     )
-```
-
-SQLAlchemy ORM queries are automatically parameterized and safe:
-
-```python
-# ✅ SAFE: ORM automatically parameterizes
-with Session(engine) as session:
-    user = session.query(User).filter(User.name == user_input).first()
 ```

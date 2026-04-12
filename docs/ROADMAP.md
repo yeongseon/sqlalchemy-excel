@@ -1,151 +1,91 @@
 # Project Roadmap
 
-This roadmap outlines the past achievements and future plans for sqlalchemy-excel.
+> **Current version**: 0.4.0 · **Python**: 3.10+ · **Published**: [PyPI](https://pypi.org/project/sqlalchemy-excel/)
 
-## Completed Features
+## Completed
 
 ### v0.1.0 — Initial Release
-- ✅ SQLAlchemy 2.0 dialect implementation
-- ✅ ORM support with `DeclarativeBase`
-- ✅ Basic SQL operations: SELECT, INSERT, UPDATE, DELETE
-- ✅ WHERE clauses with comparison operators
-- ✅ ORDER BY and LIMIT support
-- ✅ Type mapping for common SQLAlchemy types
-- ✅ Integration with excel-dbapi driver
-- ✅ Schema inspection (`get_table_names`, `get_columns`, `has_table`)
 
-### v0.2.x — Dialect Rewrite and Quality Improvements
-- ✅ Complete dialect architecture rewrite
-  - ExcelCompiler for SQL compilation
-  - DDLCompiler for CREATE/DROP TABLE
-  - TypeCompiler for type system
-- ✅ Enhanced operator support: IN, BETWEEN, LIKE
-- ✅ Codecov integration for coverage tracking
-- ✅ mypy strict mode with full type safety
-- ✅ Comprehensive test suite
-- ✅ Improved documentation and examples
-- ✅ GitHub Actions CI/CD pipeline
-- ✅ PyPI Trusted Publisher (OIDC) for secure releases
+- SQLAlchemy 2.0 dialect implementation
+- ORM support with `DeclarativeBase`
+- Basic SQL: SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, DROP TABLE
+- WHERE clauses with comparison operators
+- ORDER BY and LIMIT
+- Type mapping for common SQLAlchemy types
+- Schema inspection (`get_table_names`, `get_columns`, `has_table`)
 
-## Planned Features
+### v0.2.x — Dialect Rewrite & Quality
 
-### High Priority
+- Complete dialect architecture rewrite: `ExcelCompiler`, `ExcelDDLCompiler`, `ExcelTypeCompiler`
+- Enhanced operators: IN, BETWEEN, LIKE
+- Codecov integration for coverage tracking
+- mypy strict mode with full type safety
+- PyPI Trusted Publisher (OIDC) for secure releases
+- GitHub Actions CI/CD pipeline
 
-#### Remote Excel Access via Microsoft Graph API
-- [ ] Implement `excel+graph://` URL scheme
-- [ ] Support for OneDrive and SharePoint Excel files
-- [ ] OAuth 2.0 authentication flow
-- [ ] Read/write operations on cloud-stored Excel files
-- [ ] Caching layer for remote files
+### v0.3.x — Graph API & Remote Excel
 
-**Use case**: Access and query Excel files stored in Microsoft 365 without downloading them locally.
+- `ExcelGraphDialect` for remote Excel files via Microsoft Graph API
+- `excel+graph:///drive_id/item_id` URL scheme
+- Entry point `excel.graph` for SQLAlchemy dialect resolution
+- Optional dependency: `pip install sqlalchemy-excel[graph]`
+- URL percent-decoding for drive/item IDs with special characters
+- `readonly` query parameter forwarding to Graph backend
+- `supports_statement_cache = False` on both dialects
 
-```python
-# Future API
-engine = create_engine(
-    "excel+graph:///sites/mysite/documents/data.xlsx",
-    connect_args={
-        "tenant_id": "...",
-        "client_id": "...",
-        "client_secret": "..."
-    }
-)
-```
+### v0.4.0 — Stabilization (Current)
 
-### Medium Priority
+- HAVING guard via `_compose_select_body` override (compile-time error instead of silent ignore)
+- End-to-end tests: CRUD round-trip, ORM Session, inspector reflection, DDL lifecycle, rollback no-op
+- Compiler guard tests for all unsupported SQL features
+- Type compiler full coverage tests
+- Reflection edge case tests
+- Test coverage: **98% (117 tests)**
+- README restructured: limitations-first layout, Graph API moved to experimental section
 
-#### Advanced SQL Support
-- [ ] **DISTINCT**: Remove duplicate rows
-- [ ] **OFFSET**: Pagination support (currently only LIMIT works)
-- [ ] **Aggregate functions**: COUNT, SUM, AVG, MIN, MAX
-- [ ] **GROUP BY**: Grouping and aggregation
-- [ ] **HAVING**: Filtering on aggregated data
-- [ ] **Subqueries**: Nested SELECT statements
-- [ ] **CTEs (Common Table Expressions)**: WITH clauses
+## Future
 
-**Status**: These features require significant changes to the excel-dbapi query engine. Aggregate functions are particularly complex due to Excel's storage model.
+### Planned
 
-#### Multi-Table Operations
-- [ ] **JOIN support**: INNER JOIN, LEFT JOIN, RIGHT JOIN
-- [ ] Cross-sheet queries
-- [ ] Foreign key awareness (metadata only, no enforcement)
+- **DISTINCT**: Remove duplicate rows
+- **OFFSET**: Pagination support (currently only LIMIT works)
+- **Aggregate functions**: COUNT, SUM, AVG, MIN, MAX
+- **GROUP BY**: Grouping with aggregate functions
+- **Subqueries**: Nested SELECT statements
+- **Multi-sheet JOIN**: INNER JOIN, LEFT JOIN across sheets
+- **Async dialect**: `excel+aio://` with AsyncEngine support
 
-**Challenge**: Excel has no native concept of relationships or joins. Implementation would require loading and joining data in memory.
+> These features require changes in the underlying [excel-dbapi](https://github.com/yeongseon/excel-dbapi) query engine.
 
-#### Performance Optimization
-- [ ] Lazy loading for large Excel files
-- [ ] Column-level filtering (avoid loading entire rows)
-- [ ] Query result caching
-- [ ] Batch operation optimization
-- [ ] Memory-efficient streaming for large datasets
+### Not Planned
 
-**Target**: Support Excel files with 100K+ rows without excessive memory usage.
+These are explicitly out of scope:
 
-### Low Priority
-
-#### Async Support
-- [ ] Async dialect (`excel+aio://`)
-- [ ] AsyncEngine and AsyncSession support
-- [ ] Non-blocking I/O for file operations
-
-**Note**: Requires asyncio-compatible openpyxl wrapper or alternative Excel library.
-
-#### Additional Features
-- [ ] Support for Excel formulas in queries
-- [ ] Worksheet-level transactions (via temporary files)
-- [ ] ALTER TABLE support (add/remove columns)
-- [ ] Index simulation for faster lookups
-- [ ] Excel template support (preserve formatting)
-- [ ] Multiple sheet joins within same file
-
-## Known Issues and Limitations
-
-### Current Limitations (By Design)
-- No transactional rollback (Excel files don't support ACID transactions)
-- No concurrent writes (Excel file format limitations)
-- Limited SQL feature set compared to traditional RDBMS
-- Performance degrades with very large files (>50MB)
-
-### Under Consideration
-- **Alternative Excel engines**: Support for xlrd, xlwt, pyexcel in addition to openpyxl
-- **CSV fallback**: Automatic conversion to CSV for read-only operations
-- **SQLite hybrid mode**: Use SQLite as intermediate cache for complex queries
-
-## Community Feedback
-
-We welcome feedback on this roadmap! Please:
-- 🌟 Star the repository if you find it useful
-- 💬 Open an issue to suggest new features
-- 🐛 Report bugs and edge cases
-- 📝 Contribute to documentation improvements
-- 🔀 Submit pull requests for planned features
-
-**Priority is driven by community demand** — let us know what you need!
-
-## Versioning Strategy
-
-sqlalchemy-excel follows [Semantic Versioning](https://semver.org/):
-
-- **MAJOR (1.0.0)**: Stable API, production-ready, breaking changes
-- **MINOR (0.x.0)**: New features, backward-compatible
-- **PATCH (0.0.x)**: Bug fixes, no new features
-
-**Current status**: Beta (0.x.x) — API may change before 1.0.0.
+- Full ACID transactions (Excel files don't support them)
+- Concurrent write support (single-writer model by design)
+- ALTER TABLE / schema migration
+- Foreign key enforcement or index support
+- Stored procedures or triggers
 
 ## Long-Term Vision
 
-The goal of sqlalchemy-excel is to:
-1. Provide a **seamless SQLAlchemy experience** for Excel files
-2. Enable **analysts and developers** to use familiar SQL tools with Excel
-3. Bridge the gap between **ad-hoc Excel data** and **structured database workflows**
-4. Support **cloud-native Excel** (Microsoft 365, Google Sheets in future)
+1. **Seamless SQLAlchemy experience** for Excel files
+2. **Analysts and developers** use familiar SQL/ORM tools with Excel
+3. **Bridge** ad-hoc Excel data and structured database workflows
+4. **Cloud-native Excel** via Microsoft Graph API (experimental)
 
-**Not a goal**: Replace traditional databases for production workloads. Excel is great for prototyping, data analysis, and small-scale applications, but RDBMS should be used for critical systems.
+**Not a goal**: Replace real databases for production workloads.
 
-## Contributing to the Roadmap
+## Versioning
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for contribution guidelines.
+sqlalchemy-excel follows [Semantic Versioning](https://semver.org/):
+
+- **PATCH** (0.x.**y**): Bug fixes
+- **MINOR** (0.**x**.0): New features, backward-compatible
+- **MAJOR** (**x**.0.0): Breaking changes, stable API
+
+**Current status**: Beta (0.x.x) — API may change before 1.0.0.
 
 ---
 
-**Last updated**: 2024-01 (v0.2.2)
+See [CHANGELOG.md](../CHANGELOG.md) for detailed release history.

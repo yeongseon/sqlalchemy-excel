@@ -11,25 +11,19 @@ git clone https://github.com/yeongseon/sqlalchemy-excel.git
 cd sqlalchemy-excel
 ```
 
-### Set Up Virtual Environment
-
-Create and activate a virtual environment:
+### Set Up Development Environment
 
 ```bash
-# Using venv (Python 3.10+)
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Or using virtualenv
-virtualenv .venv
-source .venv/bin/activate
+make install
 ```
 
-### Install Development Dependencies
+This creates a virtual environment (`.venv/`), installs all dependencies in editable mode, and sets up pre-commit hooks.
 
-Install the package in editable mode with development dependencies:
+Or manually:
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 ```
 
@@ -43,66 +37,50 @@ This installs:
 
 ## Makefile Commands
 
-The project includes a Makefile for common development tasks:
-
 | Command | Description |
 |---------|-------------|
-| `make install` | Install the package in editable mode with dev dependencies |
+| `make install` | Bootstrap venv and install dev dependencies |
 | `make format` | Format code with ruff |
-| `make lint` | Run linting checks with ruff and mypy |
-| `make test` | Run tests with pytest |
-| `make coverage` | Run tests with coverage report |
-| `make build` | Build distribution packages |
-| `make clean` | Remove build artifacts and cache files |
+| `make lint` | Run ruff linting checks |
+| `make typecheck` | Run mypy strict type checking |
+| `make test` | Run test suite with pytest |
+| `make cov` | Run tests with coverage report (HTML + terminal) |
+| `make check` | Run lint + typecheck |
+| `make check-all` | Run lint + typecheck + tests |
+| `make build` | Build distribution packages (sdist + wheel) |
+| `make clean` | Remove build artifacts |
+| `make clean-all` | Deep clean (caches, coverage, mypy cache) |
 
 ## Running Tests
 
-Run the test suite using pytest:
-
 ```bash
-# Run all tests
-pytest
-
-# Or use make
+# All tests
 make test
 
-# Run with coverage
-pytest --cov=sqlalchemy_excel --cov-report=html
-make coverage
+# With coverage report
+make cov
 
-# Run specific test file
-pytest tests/test_dialect.py
+# Specific file
+.venv/bin/python -m pytest tests/test_dialect.py -v
 
-# Run specific test
-pytest tests/test_dialect.py::test_create_engine
+# Specific test
+.venv/bin/python -m pytest tests/test_dialect.py::test_create_engine -v
 
-# Run with verbose output
-pytest -v
+# Verbose output
+.venv/bin/python -m pytest tests/ -v
 ```
 
-Test files are located in the `tests/` directory.
+Test coverage target: **95%+** (currently 98%).
 
 ## Code Style
 
-sqlalchemy-excel follows strict code quality standards:
-
 ### Linting and Formatting
 
-**Ruff** is used for both linting and formatting:
+**ruff** handles both linting and formatting:
 
 ```bash
-# Format code (auto-fix)
-ruff format .
-
-# Check linting (without fixing)
-ruff check .
-
-# Auto-fix linting issues
-ruff check --fix .
-
-# Or use make
-make format  # Format + auto-fix
-make lint    # Check without fixing
+make format   # Auto-format
+make lint     # Check lint rules
 ```
 
 Configuration is in `pyproject.toml`:
@@ -115,10 +93,7 @@ Configuration is in `pyproject.toml`:
 **mypy** is configured in strict mode:
 
 ```bash
-mypy src/sqlalchemy_excel
-
-# Or as part of make lint
-make lint
+make typecheck
 ```
 
 Configuration (`pyproject.toml`):
@@ -133,24 +108,37 @@ All code must pass strict type checking before merging.
 ```
 sqlalchemy-excel/
 ├── src/sqlalchemy_excel/     # Main source code
-│   ├── __init__.py           # Package entry point
-│   ├── dialect.py            # ExcelDialect implementation
-│   ├── compiler.py           # SQL compilation (ExcelCompiler, DDLCompiler, TypeCompiler)
-│   ├── types.py              # Type mappings
+│   ├── __init__.py           # Package entry point, version
+│   ├── dialect.py            # ExcelDialect, ExcelGraphDialect
+│   ├── compiler.py           # ExcelCompiler (SQL compilation, HAVING guard)
+│   ├── ddl.py                # ExcelDDLCompiler (CREATE/DROP TABLE)
+│   ├── types.py              # ExcelTypeCompiler (type mappings)
+│   ├── reflection.py         # ExcelInspectionMixin (schema inspection)
 │   └── py.typed              # PEP 561 marker file
-├── tests/                     # Test suite
+├── tests/                     # 117 tests (98% coverage)
+│   ├── conftest.py           # Shared fixtures
 │   ├── test_dialect.py
 │   ├── test_compiler.py
-│   └── fixtures/             # Test data files
-├── docs/                      # Documentation
-│   ├── USAGE.md
-│   ├── DEVELOPMENT.md
-│   └── ROADMAP.md
-├── pyproject.toml            # Project metadata and config
-├── README.md                 # Main documentation
-├── CHANGELOG.md              # Version history
-├── LICENSE                   # MIT License
-└── Makefile                  # Development commands
+│   ├── test_compiler_guards.py
+│   ├── test_ddl.py
+│   ├── test_dml.py
+│   ├── test_e2e.py
+│   ├── test_graph_dialect.py
+│   ├── test_orm.py
+│   ├── test_reflection.py
+│   ├── test_reflection_full.py
+│   ├── test_type_compiler_full.py
+│   └── test_types.py
+├── docs/
+│   ├── USAGE.md              # Usage guide
+│   ├── DEVELOPMENT.md        # This file
+│   └── ROADMAP.md            # Project roadmap
+├── pyproject.toml            # Project metadata (hatchling)
+├── Makefile                  # Development commands
+├── README.md
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+└── LICENSE
 ```
 
 ## Development Workflow
@@ -186,54 +174,23 @@ sqlalchemy-excel/
 
 ## Release Process
 
-sqlalchemy-excel uses GitHub Actions for automated releases:
+sqlalchemy-excel uses **GitHub Releases** with **Trusted Publisher (OIDC)** for PyPI publishing. No API token required.
 
-### 1. Update CHANGELOG.md
+### Steps
 
-Document all changes in the changelog following the format:
+1. Update `CHANGELOG.md` with new version entries.
+2. Bump version in `pyproject.toml` and `src/sqlalchemy_excel/__init__.py`.
+3. Commit and push:
+   ```bash
+   git add pyproject.toml src/sqlalchemy_excel/__init__.py CHANGELOG.md
+   git commit -m "chore: bump version to X.Y.Z"
+   git push origin main
+   ```
+4. Create a **GitHub Release** (via the GitHub UI or `gh release create vX.Y.Z`).
+5. The `publish-pypi.yml` workflow triggers automatically, builds, validates, and publishes to PyPI.
 
-```markdown
-## [0.3.0] - 2024-01-15
+### Verify
 
-### Added
-- New feature X
-- Support for Y
-
-### Fixed
-- Bug Z
-```
-
-### 2. Bump Version
-
-Update the version in `pyproject.toml`:
-
-```toml
-[project]
-version = "0.3.0"
-```
-
-### 3. Create Git Tag
-
-```bash
-git add pyproject.toml CHANGELOG.md
-git commit -m "chore: bump version to 0.3.0"
-git tag v0.3.0
-git push origin main
-git push origin v0.3.0
-```
-
-### 4. Automated Publishing
-
-When you push a tag (`v*`), GitHub Actions automatically:
-1. Runs all tests and linting
-2. Builds distribution packages (`sdist` and `wheel`)
-3. Publishes to PyPI using **Trusted Publisher (OIDC)**
-
-**No API token needed** — the project uses PyPI's Trusted Publisher feature with OIDC authentication configured in GitHub Actions.
-
-### 5. Verify Release
-
-Check that the release appears on:
 - PyPI: https://pypi.org/project/sqlalchemy-excel/
 - GitHub Releases: https://github.com/yeongseon/sqlalchemy-excel/releases
 
@@ -241,20 +198,21 @@ Check that the release appears on:
 
 The CI pipeline (`.github/workflows/ci.yml`) runs on every push and pull request:
 
-1. **Linting**: ruff + mypy
-2. **Testing**: pytest on Python 3.10, 3.11, 3.12, 3.13
-3. **Coverage**: Upload to Codecov
+1. **Linting**: ruff
+2. **Type checking**: mypy (strict mode)
+3. **Testing**: pytest on Python 3.10, 3.11, 3.12, 3.13
+4. **Coverage**: Upload to Codecov
 
 All checks must pass before merging.
 
 ## Contributing Guidelines
 
 - Write tests for all new features and bug fixes
-- Maintain or improve code coverage (target: 90%+)
+- Maintain or improve code coverage (target: **95%+**)
 - Follow the existing code style (enforced by ruff)
 - Add type hints for all functions (enforced by mypy strict mode)
 - Update documentation for user-facing changes
-- Keep commits atomic and write clear commit messages
+- Keep commits atomic with clear messages (`feat:`, `fix:`, `docs:`, `chore:`)
 
 ## Getting Help
 
