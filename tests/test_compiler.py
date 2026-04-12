@@ -125,13 +125,16 @@ class TestSelectCompilation:
 class TestCompilationRejection:
     """Test that unsupported features raise CompileError."""
 
-    def test_join_rejected(self, excel_engine, users_table, orders_table):
-        stmt = select(users_table).join(
+    def test_join_compiles(self, excel_engine, users_table, orders_table):
+        stmt = select(users_table.c.id, orders_table.c.user_id).join(
             orders_table, users_table.c.id == orders_table.c.user_id
         )
-        with pytest.raises(exc.CompileError, match="JOIN"):
-            stmt.compile(dialect=excel_engine.dialect)
-
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "JOIN" in sql
+        assert "ON" in sql
+        assert "users.id" in sql
+        assert "orders.user_id" in sql
     def test_group_by_compiles(self, excel_engine, users_table):
         stmt = select(users_table.c.name).group_by(users_table.c.name)
         compiled = stmt.compile(dialect=excel_engine.dialect)

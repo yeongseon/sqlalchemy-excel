@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.5.0] - 2026-04-13
+
+### Added
+- JOIN support: INNER JOIN and LEFT JOIN compile to valid SQL for excel-dbapi
+- Compiler auto-detects JOIN context and emits table-qualified column names
+- E2E tests: inner join, left join with NULL fill
+- Compiler guard tests for JOIN compilation
+- Direct `visit_subquery` guard tests for improved coverage
+
+### Changed
+- `visit_join()`: removed CompileError guard, delegates to base SQLAlchemy compiler
+- `visit_column()`: conditionally includes table prefix based on JOIN context
+- `_setup_select_stack()`: detects JOIN in FROM clause before column compilation
+- `visit_function()`: regex updated to allow qualified column names (e.g., `a.id`)
+- excel-dbapi dependency updated to >=0.4.0
+- Test count: 152 → 155, coverage: 94% → 98%
+- Version bumped to 0.5.0
+
 ## [0.4.0] - 2026-04-12
 
 ### Added

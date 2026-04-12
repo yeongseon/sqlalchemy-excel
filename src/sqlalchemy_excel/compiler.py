@@ -6,21 +6,25 @@ excel-dbapi's parser understands:
 Supported:
     SELECT columns FROM table [WHERE ...] [GROUP BY ...] [HAVING ...] [ORDER BY col [ASC|DESC]] [LIMIT n] [OFFSET n]
     SELECT DISTINCT columns FROM table [WHERE ...] ...
+    SELECT cols FROM t1 [INNER|LEFT] JOIN t2 ON t1.col = t2.col [WHERE ...] [ORDER BY ...] [LIMIT n] [OFFSET n]
     INSERT INTO table (cols) VALUES (vals)
     UPDATE table SET col=val [WHERE ...]
     DELETE FROM table [WHERE ...]
 
     Rejected (raises CompileError):
-    CTEs, UNION/INTERSECT/EXCEPT, window functions, RETURNING, JOIN, FOR UPDATE, NOT IN
+    CTEs, UNION/INTERSECT/EXCEPT, window functions, RETURNING, FOR UPDATE, NOT IN
 
     Partially supported:
     non-correlated subqueries in WHERE ... IN (SELECT single_col FROM table [WHERE ...])
 
-excel-dbapi's parser uses unquoted, unprefixed column names:
+For single-table queries, excel-dbapi expects unquoted, unprefixed column names:
     SELECT id, name FROM users          (correct)
     SELECT users.id, users.name FROM users  (WRONG — parser rejects)
 
-So we override the identifier preparer to never use table prefixes.
+For JOIN queries, table-qualified column names are required:
+    SELECT users.id, orders.user_id FROM users JOIN orders ON users.id = orders.user_id
+
+The compiler detects JOIN context and switches between the two modes automatically.
 """
 
 from __future__ import annotations
@@ -61,6 +65,27 @@ class ExcelCompiler(compiler.SQLCompiler):
 
     _in_in_clause: bool = False
     _subquery_depth: int = 0
+    _has_join: bool = False
+
+    def _setup_select_stack(
+        self,
+        select: Any,
+        compile_state: Any,
+        entry: Any,
+        asfrom: Any,
+        lateral: Any,
+        compound_index: Any,
+    ) -> Any:
+        from sqlalchemy.sql.expression import Join
+
+        froms = super()._setup_select_stack(
+            select, compile_state, entry, asfrom, lateral, compound_index
+        )
+        for from_clause in froms:
+            if isinstance(from_clause, Join):
+                self._has_join = True
+                break
+        return froms
 
     def _reject_correlated_subquery(self, inner: Any) -> None:
         inner_tables = {
@@ -114,7 +139,10 @@ class ExcelCompiler(compiler.SQLCompiler):
                 f"Excel dialect does not support expression arguments in {function_name}()"
             )
 
-        if inner != "*" and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", inner):
+        if inner != "*" and not re.fullmatch(
+            r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?",
+            inner,
+        ):
             raise exc.CompileError(
                 f"Excel dialect does not support expression arguments in {function_name}()"
             )
@@ -130,16 +158,15 @@ class ExcelCompiler(compiler.SQLCompiler):
         ambiguous_table_name_map: MutableMapping[str, str] | None = None,
         **kwargs: Any,
     ) -> str:
-        """Override to never include table prefix in column references.
+        """Override to conditionally include table prefix in column references.
 
-        excel-dbapi expects: SELECT id, name FROM users
-        Not: SELECT users.id, users.name FROM users
+        For single-table queries: SELECT id, name FROM users
+        For JOIN queries: SELECT users.id, orders.amount FROM users JOIN orders ...
         """
-        # Force include_table=False to avoid table.column notation
         return super().visit_column(
             column,
             add_to_result_map=add_to_result_map,
-            include_table=False,
+            include_table=self._has_join,
             result_map_targets=result_map_targets,
             ambiguous_table_name_map=ambiguous_table_name_map,
             **kwargs,
@@ -208,7 +235,12 @@ class ExcelCompiler(compiler.SQLCompiler):
         from_linter: Any = None,
         **kwargs: Any,
     ) -> str:
-        raise exc.CompileError("Excel dialect does not support JOIN")
+        self._has_join = True
+        return str(
+            super().visit_join(
+                join, asfrom=asfrom, from_linter=from_linter, **kwargs
+            )
+        )
 
     def group_by_clause(self, select: Any, **kw: Any) -> str:
         return str(super().group_by_clause(select, **kw))  # type: ignore[no-untyped-call]

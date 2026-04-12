@@ -160,7 +160,7 @@ def test_e2e_rollback_is_silent_noop_and_data_persists(tmp_path) -> None:
     engine.dispose()
 
 
-def test_e2e_join_is_rejected(tmp_path) -> None:
+def test_e2e_join_inner(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
     users = _users_table(metadata)
@@ -169,11 +169,57 @@ def test_e2e_join_is_rejected(tmp_path) -> None:
         metadata,
         Column("id", Integer, primary_key=True),
         Column("user_id", Integer),
+        Column("amount", Integer),
     )
+    metadata.create_all(engine)
 
-    stmt = select(users).join(orders, users.c.id == orders.c.user_id)
-    with pytest.raises(exc.CompileError, match="JOIN"):
-        stmt.compile(dialect=engine.dialect)
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(users).values(id=3, name="Charlie", age=35))
+        conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
+        conn.execute(insert(orders).values(id=2, user_id=1, amount=200))
+        conn.execute(insert(orders).values(id=3, user_id=3, amount=300))
+
+    with engine.connect() as conn:
+        stmt = (
+            select(users.c.name, orders.c.amount)
+            .join(orders, users.c.id == orders.c.user_id)
+            .order_by(orders.c.amount)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [("Alice", 100), ("Alice", 200), ("Charlie", 300)]
+
+    engine.dispose()
+
+
+def test_e2e_join_left(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
+
+    with engine.connect() as conn:
+        stmt = (
+            select(users.c.name, orders.c.amount)
+            .join(orders, users.c.id == orders.c.user_id, isouter=True)
+            .order_by(users.c.name)
+        )
+        rows = conn.execute(stmt).all()
+        # Bob has no orders, so LEFT JOIN returns (Bob, None)
+        assert rows == [("Alice", 100), ("Bob", None)]
 
     engine.dispose()
 

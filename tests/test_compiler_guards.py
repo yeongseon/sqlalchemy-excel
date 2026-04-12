@@ -48,15 +48,21 @@ def _build_tables(metadata: MetaData) -> tuple[Table, Table]:
     return users, orders
 
 
-def test_compiler_join_guard(tmp_xlsx: str) -> None:
+def test_compiler_join_compiles(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, orders = _build_tables(metadata)
 
-    with pytest.raises(exc.CompileError, match="JOIN"):
-        select(users).join(orders, users.c.id == orders.c.user_id).compile(
-            dialect=engine.dialect
-        )
+    stmt = select(users.c.id, orders.c.user_id).join(
+        orders, users.c.id == orders.c.user_id
+    )
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = str(compiled)
+    assert "JOIN" in sql
+    assert "ON" in sql
+    # Table-qualified column names in JOIN context
+    assert "users.id" in sql
+    assert "orders.user_id" in sql
     engine.dispose()
 
 
@@ -345,5 +351,53 @@ def test_dialect_autocommit_query_parsing_and_no_params_execution() -> None:
 
     assert dialect._check_unicode_returns(connection=None) is True
     assert dialect._check_unicode_description(connection=None) is True
+
+    engine.dispose()
+
+
+def test_compiler_visit_subquery_direct_guards(tmp_xlsx: str) -> None:
+    """Exercise visit_subquery directly to cover depth/update checks."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    sub = select(orders.c.user_id).subquery()
+    compiler_inst = select(users).compile(dialect=engine.dialect)
+
+    # Without _in_in_clause, subquery is rejected
+    with pytest.raises(exc.CompileError, match="only supports subqueries in WHERE"):
+        compiler_inst.visit_subquery(sub)
+
+    # With _in_in_clause but depth > 0, nested subquery rejected
+    compiler_inst._in_in_clause = True
+    compiler_inst._subquery_depth = 1
+    with pytest.raises(exc.CompileError, match="nested subqueries"):
+        compiler_inst.visit_subquery(sub)
+
+    # Reset depth, it should work
+    compiler_inst._subquery_depth = 0
+    result = compiler_inst.visit_subquery(sub)
+    assert "user_id" in result
+    assert "orders" in result
+
+    engine.dispose()
+
+
+def test_compiler_visit_subquery_rejects_in_update_context(tmp_xlsx: str) -> None:
+    """visit_subquery rejects subqueries when statement is UPDATE/DELETE."""
+    from sqlalchemy import update as sa_update
+
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    sub = select(orders.c.user_id).subquery()
+    # Compile an UPDATE statement
+    update_stmt = sa_update(users).values(name="x")
+    compiler_inst = update_stmt.compile(dialect=engine.dialect)
+    compiler_inst._in_in_clause = True
+
+    with pytest.raises(exc.CompileError, match="does not support subqueries in UPDATE/DELETE"):
+        compiler_inst.visit_subquery(sub)
 
     engine.dispose()
