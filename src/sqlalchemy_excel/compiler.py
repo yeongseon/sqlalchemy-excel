@@ -4,13 +4,13 @@ Compiles SQLAlchemy expression trees into the SQL subset that
 excel-dbapi's parser understands:
 
 Supported:
-    SELECT columns FROM table [WHERE ...] [ORDER BY col [ASC|DESC]] [LIMIT n]
+    SELECT columns FROM table [WHERE ...] [ORDER BY col [ASC|DESC]] [LIMIT n] [OFFSET n]
+    SELECT DISTINCT columns FROM table [WHERE ...] ...
     INSERT INTO table (cols) VALUES (vals)
     UPDATE table SET col=val [WHERE ...]
     DELETE FROM table [WHERE ...]
 
-Rejected (raises CompileError):
-    JOIN, GROUP BY, HAVING, DISTINCT, OFFSET, subqueries,
+    Rejected (raises CompileError):
     CTEs, aggregate functions, window functions, RETURNING
 
 excel-dbapi's parser uses unquoted, unprefixed column names:
@@ -177,7 +177,7 @@ class ExcelCompiler(compiler.SQLCompiler):
         if select._limit_clause is not None:
             text += " LIMIT " + self.process(select._limit_clause, **kw)
         if select._offset_clause is not None:
-            raise exc.CompileError("Excel dialect does not support OFFSET")
+            text += " OFFSET " + self.process(select._offset_clause, **kw)
         return text
 
     def visit_cte(

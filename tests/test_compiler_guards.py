@@ -45,7 +45,7 @@ def _build_tables(metadata: MetaData) -> tuple[Table, Table]:
     return users, orders
 
 
-def test_compiler_join_group_by_having_offset_guards(tmp_xlsx: str) -> None:
+def test_compiler_join_group_by_having_guards(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, orders = _build_tables(metadata)
@@ -58,9 +58,6 @@ def test_compiler_join_group_by_having_offset_guards(tmp_xlsx: str) -> None:
         select(users.c.name).group_by(users.c.name).compile(dialect=engine.dialect)
     with pytest.raises(exc.CompileError, match="HAVING"):
         select(users.c.id).having(users.c.id > 0).compile(dialect=engine.dialect)
-    with pytest.raises(exc.CompileError, match="OFFSET"):
-        select(users).offset(1).compile(dialect=engine.dialect)
-
     engine.dispose()
 
 

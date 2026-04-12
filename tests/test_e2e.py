@@ -194,13 +194,42 @@ def test_e2e_count_query_is_rejected_by_compiler(tmp_path) -> None:
     engine.dispose()
 
 
-def test_e2e_offset_is_rejected(tmp_path) -> None:
+def test_e2e_offset_compiles_and_executes(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
     users = _users_table(metadata)
+    metadata.create_all(engine)
 
-    stmt = select(users).offset(1)
-    with pytest.raises(exc.CompileError, match="OFFSET"):
-        stmt.compile(dialect=engine.dialect)
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(users).values(id=3, name="Charlie", age=35))
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(users).order_by(users.c.id).limit(2).offset(1)
+        ).all()
+        assert rows == [(2, "Bob", 25), (3, "Charlie", 35)]
+
+    engine.dispose()
+
+
+def test_e2e_distinct_compiles_and_executes(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Alice", age=25))
+        conn.execute(insert(users).values(id=3, name="Bob", age=30))
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(users.c.name).distinct()
+        ).all()
+        names = [r[0] for r in rows]
+        assert sorted(names) == ["Alice", "Bob"]
 
     engine.dispose()

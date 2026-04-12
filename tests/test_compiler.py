@@ -85,6 +85,33 @@ class TestSelectCompilation:
         sql = str(compiled)
         assert "LIMIT" in sql
 
+    def test_select_offset(self, excel_engine, users_table):
+        stmt = select(users_table).limit(10).offset(5)
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "LIMIT" in sql
+        assert "OFFSET" in sql
+
+    def test_select_offset_only(self, excel_engine, users_table):
+        stmt = select(users_table).offset(5)
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "OFFSET" in sql
+
+    def test_select_distinct(self, excel_engine, users_table):
+        stmt = select(users_table.c.name).distinct()
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "DISTINCT" in sql
+
+    def test_select_distinct_with_limit_offset(self, excel_engine, users_table):
+        stmt = select(users_table.c.name).distinct().limit(10).offset(5)
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "DISTINCT" in sql
+        assert "LIMIT" in sql
+        assert "OFFSET" in sql
+
 
 class TestCompilationRejection:
     """Test that unsupported features raise CompileError."""
@@ -99,9 +126,4 @@ class TestCompilationRejection:
     def test_group_by_rejected(self, excel_engine, users_table):
         stmt = select(users_table.c.name).group_by(users_table.c.name)
         with pytest.raises(exc.CompileError, match="GROUP BY"):
-            stmt.compile(dialect=excel_engine.dialect)
-
-    def test_offset_rejected(self, excel_engine, users_table):
-        stmt = select(users_table).offset(5)
-        with pytest.raises(exc.CompileError, match="OFFSET"):
             stmt.compile(dialect=excel_engine.dialect)
