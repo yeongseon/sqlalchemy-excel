@@ -7,7 +7,8 @@ Supported:
     SELECT columns FROM table [WHERE ...] [GROUP BY ...] [HAVING ...] [ORDER BY col [ASC|DESC]] [LIMIT n] [OFFSET n]
     SELECT DISTINCT columns FROM table [WHERE ...] ...
     SELECT cols FROM t1 [INNER|LEFT] JOIN t2 ON t1.col = t2.col [AND t1.c2 = t2.c2 ...] [WHERE ...] [ORDER BY ...] [LIMIT n] [OFFSET n]
-    INSERT INTO table (cols) VALUES (vals)
+    INSERT INTO table (cols) VALUES (vals), (vals2), ...
+    INSERT INTO table (cols) SELECT cols FROM source [WHERE ...]
     UPDATE table SET col=val [WHERE ...]
     DELETE FROM table [WHERE ...]
 
@@ -305,6 +306,14 @@ class ExcelCompiler(compiler.SQLCompiler):
         return str(
             label.element._compiler_dispatch(self, within_columns_clause=False, **kw)
         )
+
+    def visit_insert(
+        self,
+        insert_stmt: Any,
+        *args: Any,
+        **kw: Any,
+    ) -> str:
+        return str(super().visit_insert(insert_stmt, *args, **kw))
 
     # ── Unsupported feature guards ─────────────────────────
 

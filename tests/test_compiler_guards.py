@@ -84,6 +84,49 @@ def test_compiler_cte_returning_for_update_guards(tmp_xlsx: str) -> None:
     engine.dispose()
 
 
+def test_multi_row_insert_compiles(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    stmt = insert(users).values(
+        [
+            {"id": 1, "name": "Alice"},
+            {"id": 2, "name": "Bob"},
+        ]
+    )
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+
+    assert sql.startswith("INSERT INTO users (id, name) VALUES")
+    assert "(?, ?), (?, ?)" in sql
+    engine.dispose()
+
+
+def test_insert_from_select_compiles(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    source = Table(
+        "source",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+    )
+    target = Table(
+        "target",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+    )
+
+    stmt = target.insert().from_select(["id", "name"], select(source.c.id, source.c.name))
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+
+    assert sql == "INSERT INTO target (id, name) SELECT id, name FROM source"
+    engine.dispose()
+
+
 def test_compiler_rejects_count_distinct(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
@@ -362,7 +405,7 @@ def test_compiler_visit_subquery_direct_guards(tmp_xlsx: str) -> None:
     users, orders = _build_tables(metadata)
 
     sub = select(orders.c.user_id).subquery()
-    compiler_inst = select(users).compile(dialect=engine.dialect)
+    compiler_inst = cast("Any", select(users).compile(dialect=engine.dialect))
 
     # Without _in_in_clause, subquery is rejected
     with pytest.raises(exc.CompileError, match="only supports subqueries in WHERE"):
@@ -394,7 +437,7 @@ def test_compiler_visit_subquery_rejects_in_update_context(tmp_xlsx: str) -> Non
     sub = select(orders.c.user_id).subquery()
     # Compile an UPDATE statement
     update_stmt = sa_update(users).values(name="x")
-    compiler_inst = update_stmt.compile(dialect=engine.dialect)
+    compiler_inst = cast("Any", update_stmt.compile(dialect=engine.dialect))
     compiler_inst._in_in_clause = True
 
     with pytest.raises(exc.CompileError, match="does not support subqueries in UPDATE/DELETE"):

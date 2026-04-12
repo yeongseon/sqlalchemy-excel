@@ -76,6 +76,99 @@ def test_e2e_core_crud_round_trip(tmp_path) -> None:
     engine.dispose()
 
 
+def test_multi_row_insert_e2e(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+                {"id": 3, "name": "Charlie", "age": 35},
+            ],
+        )
+
+    with engine.connect() as conn:
+        rows = conn.execute(select(users).order_by(users.c.id)).all()
+        assert rows == [(1, "Alice", 30), (2, "Bob", 25), (3, "Charlie", 35)]
+
+    engine.dispose()
+
+
+def test_insert_from_select_e2e(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    source = Table(
+        "source",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+    )
+    target = Table(
+        "target",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(source), [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}])
+        conn.execute(
+            target.insert().from_select(["id", "name"], select(source.c.id, source.c.name))
+        )
+
+    with engine.connect() as conn:
+        rows = conn.execute(select(target).order_by(target.c.id)).all()
+        assert rows == [(1, "Alice"), (2, "Bob")]
+
+    engine.dispose()
+
+
+def test_insert_from_select_with_where_e2e(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    source = Table(
+        "source",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+    )
+    target = Table(
+        "target",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(source),
+            [
+                {"id": 1, "name": "Alice"},
+                {"id": 2, "name": "Bob"},
+                {"id": 3, "name": "Charlie"},
+            ],
+        )
+        conn.execute(
+            target.insert().from_select(
+                ["id", "name"],
+                select(source.c.id, source.c.name).where(source.c.id >= 2),
+            )
+        )
+
+    with engine.connect() as conn:
+        rows = conn.execute(select(target).order_by(target.c.id)).all()
+        assert rows == [(2, "Bob"), (3, "Charlie")]
+
+    engine.dispose()
+
+
 def test_e2e_session_add_commit_and_readback(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     Base.metadata.create_all(engine)

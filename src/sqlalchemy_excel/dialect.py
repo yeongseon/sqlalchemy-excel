@@ -101,7 +101,7 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
     supports_default_values: bool = False
     supports_default_metavalue: bool = False
     supports_empty_insert: bool = False
-    supports_multivalues_insert: bool = False
+    supports_multivalues_insert: bool = True
     postfetch_lastrowid: bool = False
     insertmanyvalues_implicit_sentinel: Any = None
 

@@ -21,6 +21,8 @@ Before writing any code, understand the dialect's capabilities and limits:
 |---------|-----------|
 | SELECT with WHERE, ORDER BY, LIMIT, OFFSET | ✅ |
 | INSERT, UPDATE, DELETE | ✅ |
+| Multi-row INSERT VALUES | ✅ |
+| INSERT ... SELECT (`from_select`) | ✅ |
 | CREATE TABLE / DROP TABLE | ✅ |
 | ORM with DeclarativeBase | ✅ |
 | Schema inspection (tables, columns) | ✅ |
@@ -192,6 +194,46 @@ with engine.connect() as conn:
     result = conn.execute(text("SELECT * FROM Sheet1"))
     for row in result:
         print(row)
+```
+
+```python
+from sqlalchemy import Column, Integer, MetaData, String, Table, insert, select
+
+metadata = MetaData()
+source = Table(
+    "source",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String),
+)
+target = Table(
+    "target",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String),
+)
+metadata.create_all(engine)
+
+# Multi-row insert
+with engine.connect() as conn:
+    conn.execute(
+        insert(source),
+        [
+            {"id": 1, "name": "Alice"},
+            {"id": 2, "name": "Bob"},
+        ],
+    )
+    conn.commit()
+
+# INSERT ... SELECT
+with engine.connect() as conn:
+    conn.execute(
+        target.insert().from_select(
+            ["id", "name"],
+            select(source.c.id, source.c.name),
+        )
+    )
+    conn.commit()
 ```
 
 ## Schema Inspection

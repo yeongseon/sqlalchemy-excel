@@ -160,6 +160,50 @@ with Session(engine) as session:
     session.commit()
 ```
 
+```python
+from sqlalchemy import insert
+
+# Multi-row insert (Core)
+with engine.connect() as conn:
+    conn.execute(
+        insert(User.__table__),
+        [
+            {"id": 4, "name": "Dora", "age": 29},
+            {"id": 5, "name": "Evan", "age": 41},
+        ],
+    )
+    conn.commit()
+```
+
+```python
+from sqlalchemy import Column, Integer, MetaData, String, Table, select
+
+metadata = MetaData()
+source = Table(
+    "source",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String),
+)
+target = Table(
+    "target",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String),
+)
+metadata.create_all(engine)
+
+# INSERT ... SELECT (Core)
+with engine.connect() as conn:
+    conn.execute(
+        target.insert().from_select(
+            ["id", "name"],
+            select(source.c.id, source.c.name).where(source.c.id >= 2),
+        )
+    )
+    conn.commit()
+```
+
 ### Update
 
 ```python
