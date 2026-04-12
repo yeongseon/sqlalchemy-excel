@@ -640,3 +640,57 @@ def test_e2e_non_equality_on_clause_rejected_at_compile_time(tmp_path) -> None:
             conn.execute(stmt).all()
 
     engine.dispose()
+
+
+def test_e2e_or_on_clause_rejected_at_compile_time(tmp_path) -> None:
+    """OR-combined ON clause raises CompileError."""
+    from sqlalchemy import or_
+
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("dept_id", Integer),
+    )
+    metadata.create_all(engine)
+
+    stmt = (
+        select(users.c.name, orders.c.user_id)
+        .join(
+            orders,
+            or_(users.c.id == orders.c.user_id, users.c.id == orders.c.dept_id),
+        )
+    )
+    with pytest.raises(exc.CompileError, match="OR"):
+        with engine.connect() as conn:
+            conn.execute(stmt).all()
+
+    engine.dispose()
+
+
+def test_e2e_literal_on_clause_rejected_at_compile_time(tmp_path) -> None:
+    """ON clause with literal operand (col == 1) raises CompileError."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+    )
+    metadata.create_all(engine)
+
+    stmt = (
+        select(users.c.name, orders.c.user_id)
+        .join(orders, users.c.id == 1)
+    )
+    with pytest.raises(exc.CompileError, match="column references"):
+        with engine.connect() as conn:
+            conn.execute(stmt).all()
+
+    engine.dispose()

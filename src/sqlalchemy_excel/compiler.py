@@ -6,13 +6,14 @@ excel-dbapi's parser understands:
 Supported:
     SELECT columns FROM table [WHERE ...] [GROUP BY ...] [HAVING ...] [ORDER BY col [ASC|DESC]] [LIMIT n] [OFFSET n]
     SELECT DISTINCT columns FROM table [WHERE ...] ...
-    SELECT cols FROM t1 [INNER|LEFT] JOIN t2 ON t1.col = t2.col [WHERE ...] [ORDER BY ...] [LIMIT n] [OFFSET n]
+    SELECT cols FROM t1 [INNER|LEFT] JOIN t2 ON t1.col = t2.col [AND t1.c2 = t2.c2 ...] [WHERE ...] [ORDER BY ...] [LIMIT n] [OFFSET n]
     INSERT INTO table (cols) VALUES (vals)
     UPDATE table SET col=val [WHERE ...]
     DELETE FROM table [WHERE ...]
 
     Rejected (raises CompileError):
-    CTEs, UNION/INTERSECT/EXCEPT, window functions, RETURNING, FOR UPDATE, NOT IN
+    CTEs, UNION/INTERSECT/EXCEPT, window functions, RETURNING, FOR UPDATE, NOT IN,
+    FULL OUTER JOIN, chained JOINs, non-equality/OR/non-column ON clauses
 
     Partially supported:
     non-correlated subqueries in WHERE ... IN (SELECT single_col FROM table [WHERE ...])
@@ -74,8 +75,9 @@ class ExcelCompiler(compiler.SQLCompiler):
 
         Rejects:
         - Chained joins (more than one JOIN node in the tree)
-        - FULL OUTER JOIN or RIGHT JOIN
+        - FULL OUTER JOIN
         - Non-equality ON clauses (only col = col and AND-combined equalities allowed)
+        - Non-column operands in ON (literals, functions, arithmetic)
         """
         # 1. Reject chained joins: if either side is itself a Join, we have >1 join
         if isinstance(join.left, Join) or isinstance(join.right, Join):
@@ -97,20 +99,35 @@ class ExcelCompiler(compiler.SQLCompiler):
             )
 
         def _check_on_clause(clause: Any) -> None:
-            """Recursively validate that ON clause contains only equality comparisons."""
+            """Recursively validate that ON clause contains only column equality comparisons."""
             visit_name = getattr(clause, "__visit_name__", None)
             if visit_name == "binary" and hasattr(clause, "operator"):
                 if clause.operator is not operators.eq:
                     raise exc.CompileError(
                         "Excel dialect only supports '=' comparisons in JOIN ON clause"
                     )
+                # Validate both operands are plain column references
+                for operand in (clause.left, clause.right):
+                    op_visit = getattr(operand, "__visit_name__", None)
+                    if op_visit != "column":
+                        raise exc.CompileError(
+                            "Excel dialect only supports column references in JOIN ON clause"
+                        )
                 return
-            # AND-combined clause list
+            # AND-combined clause list (reject OR and other operators)
             if visit_name == "expression_clauselist":
+                if clause.operator is not operators.and_:
+                    raise exc.CompileError(
+                        "Excel dialect does not support OR in JOIN ON clause"
+                    )
                 for sub_clause in clause.clauses:
                     _check_on_clause(sub_clause)
                 return
-            # Anything else (true(), OR, unary, etc.) is unsupported
+            # Handle Grouping wrapper nodes
+            if visit_name == "grouping":
+                _check_on_clause(clause.element)
+                return
+            # Anything else (true(), unary, etc.) is unsupported
             raise exc.CompileError(
                 "Excel dialect only supports equality comparisons in JOIN ON clause"
             )

@@ -620,3 +620,86 @@ def test_compiler_accepts_and_combined_equality_on(tmp_xlsx: str) -> None:
     assert "AND" in sql_text
 
     engine.dispose()
+
+
+def test_compiler_rejects_or_on_clause(tmp_xlsx: str) -> None:
+    """OR-combined ON clause should be rejected at compile time."""
+    from sqlalchemy import or_
+
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users = Table(
+        "users",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("dept_id", Integer),
+    )
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("dept_id", Integer),
+    )
+
+    stmt = (
+        select(users.c.id, orders.c.id)
+        .join(
+            orders,
+            or_(users.c.id == orders.c.user_id, users.c.dept_id == orders.c.dept_id),
+        )
+    )
+    with pytest.raises(exc.CompileError, match="OR"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_literal_operand_in_on(tmp_xlsx: str) -> None:
+    """ON clause with literal value (col == 1) should be rejected at compile time."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = (
+        select(users.c.name, orders.c.user_id)
+        .join(orders, users.c.id == 1)
+    )
+    with pytest.raises(exc.CompileError, match="column references"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_arithmetic_operand_in_on(tmp_xlsx: str) -> None:
+    """ON clause with arithmetic expression should be rejected at compile time."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = (
+        select(users.c.name, orders.c.user_id)
+        .join(orders, users.c.id == (orders.c.user_id + 1))
+    )
+    with pytest.raises(exc.CompileError, match="column references"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_function_operand_in_on(tmp_xlsx: str) -> None:
+    """ON clause with function call should be rejected at compile time."""
+    from sqlalchemy import func
+
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = (
+        select(users.c.name, orders.c.user_id)
+        .join(orders, users.c.id == func.abs(orders.c.user_id))
+    )
+    with pytest.raises(exc.CompileError, match="column references"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
