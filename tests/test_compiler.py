@@ -1,0 +1,107 @@
+"""Tests for ExcelCompiler — SQL compilation and rejection."""
+
+from __future__ import annotations
+
+import pytest
+from sqlalchemy import (
+    Column,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    create_engine,
+    exc,
+    select,
+)
+
+
+@pytest.fixture
+def metadata():
+    return MetaData()
+
+
+@pytest.fixture
+def users_table(metadata):
+    return Table(
+        "users",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+        Column("age", Integer),
+    )
+
+
+@pytest.fixture
+def orders_table(metadata):
+    return Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+
+
+@pytest.fixture
+def excel_engine(tmp_xlsx):
+    eng = create_engine(f"excel:///{tmp_xlsx}")
+    yield eng
+    eng.dispose()
+
+
+class TestSelectCompilation:
+    """Test SELECT statement compilation."""
+
+    def test_select_all(self, excel_engine, users_table):
+        stmt = select(users_table)
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "SELECT" in sql
+        assert "FROM" in sql
+        assert "users" in sql
+
+    def test_select_columns(self, excel_engine, users_table):
+        stmt = select(users_table.c.id, users_table.c.name)
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "id" in sql
+        assert "name" in sql
+
+    def test_select_where(self, excel_engine, users_table):
+        stmt = select(users_table).where(users_table.c.id == 1)
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "WHERE" in sql
+
+    def test_select_order_by(self, excel_engine, users_table):
+        stmt = select(users_table).order_by(users_table.c.name)
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "ORDER BY" in sql
+
+    def test_select_limit(self, excel_engine, users_table):
+        stmt = select(users_table).limit(10)
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "LIMIT" in sql
+
+
+class TestCompilationRejection:
+    """Test that unsupported features raise CompileError."""
+
+    def test_join_rejected(self, excel_engine, users_table, orders_table):
+        stmt = select(users_table).join(
+            orders_table, users_table.c.id == orders_table.c.user_id
+        )
+        with pytest.raises(exc.CompileError, match="JOIN"):
+            stmt.compile(dialect=excel_engine.dialect)
+
+    def test_group_by_rejected(self, excel_engine, users_table):
+        stmt = select(users_table.c.name).group_by(users_table.c.name)
+        with pytest.raises(exc.CompileError, match="GROUP BY"):
+            stmt.compile(dialect=excel_engine.dialect)
+
+    def test_offset_rejected(self, excel_engine, users_table):
+        stmt = select(users_table).offset(5)
+        with pytest.raises(exc.CompileError, match="OFFSET"):
+            stmt.compile(dialect=excel_engine.dialect)

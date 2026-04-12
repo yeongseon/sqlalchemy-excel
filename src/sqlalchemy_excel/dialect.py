@@ -1,0 +1,221 @@
+"""ExcelDialect — SQLAlchemy dialect that uses excel-dbapi as the DB-API driver."""
+
+from __future__ import annotations
+
+import re
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from sqlalchemy import event, pool
+from sqlalchemy.engine import default
+from sqlalchemy.schema import Table
+
+from .compiler import ExcelCompiler, ExcelIdentifierPreparer
+from .ddl import ExcelDDLCompiler
+from .reflection import ExcelInspectionMixin
+from .types import ExcelTypeCompiler
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import URL
+    from sqlalchemy.engine.interfaces import ConnectArgsType
+
+
+def _after_create(
+    target: Table,
+    connection: Any,
+    **kw: Any,
+) -> None:
+    """Write column metadata after CREATE TABLE (Excel dialect only)."""
+    if connection.dialect.name != "excel":
+        return
+    import excel_dbapi
+
+    raw_conn = connection.connection.dbapi_connection
+    pk_cols = {col.name for col in target.primary_key.columns}
+
+    columns = []
+    for col in target.columns:
+        type_compiler = connection.dialect.type_compiler
+        type_name = type_compiler.process(col.type)
+        columns.append(
+            {
+                "name": col.name,
+                "type_name": type_name,
+                "nullable": col.nullable if col.nullable is not None else True,
+                "primary_key": col.name in pk_cols,
+            }
+        )
+
+    excel_dbapi.write_table_metadata(raw_conn, target.name, columns)
+
+
+def _after_drop(
+    target: Table,
+    connection: Any,
+    **kw: Any,
+) -> None:
+    """Remove column metadata after DROP TABLE (Excel dialect only)."""
+    if connection.dialect.name != "excel":
+        return
+    import excel_dbapi
+
+    raw_conn = connection.connection.dbapi_connection
+    excel_dbapi.remove_table_metadata(raw_conn, target.name)
+
+
+# Register DDL events globally for all Table objects
+event.listen(Table, "after_create", _after_create)
+event.listen(Table, "after_drop", _after_drop)
+
+
+class ExcelDialect(ExcelInspectionMixin, default.DefaultDialect):  # type: ignore[misc]
+    """SQLAlchemy dialect for Excel files via excel-dbapi.
+
+    Connection URLs::
+
+        # Relative path
+        excel:///data.xlsx
+
+        # Absolute path
+        excel:////home/user/data.xlsx
+        excel:///C:/Users/data.xlsx  (Windows)
+
+    """
+
+    name: ClassVar[str] = "excel"
+    driver: ClassVar[str] = "dbapi"
+    default_paramstyle: ClassVar[str] = "qmark"
+
+    # ── Feature flags ──────────────────────────────────────
+    supports_alter: ClassVar[bool] = False
+    supports_sequences: ClassVar[bool] = False
+    supports_schemas: ClassVar[bool] = False
+    supports_views: ClassVar[bool] = False
+    supports_native_boolean: ClassVar[bool] = True
+    supports_native_decimal: ClassVar[bool] = False
+    supports_statement_cache: ClassVar[bool] = False
+    supports_default_values: ClassVar[bool] = False
+    supports_default_metavalue: ClassVar[bool] = False
+    supports_empty_insert: ClassVar[bool] = False
+    supports_multivalues_insert: ClassVar[bool] = False
+    postfetch_lastrowid: ClassVar[bool] = False
+    insertmanyvalues_implicit_sentinel: ClassVar[Any] = None
+
+    # ── Compiler classes ──────────────────────────────────
+    statement_compiler = ExcelCompiler
+    ddl_compiler = ExcelDDLCompiler
+    type_compiler_cls = ExcelTypeCompiler
+    preparer = ExcelIdentifierPreparer
+
+    @classmethod
+    def import_dbapi(cls) -> Any:
+        import excel_dbapi
+
+        return excel_dbapi
+
+    @classmethod
+    def get_pool_class(cls, url: URL) -> type[pool.Pool]:
+        return pool.StaticPool
+
+    def create_connect_args(self, url: URL) -> ConnectArgsType:
+        """Translate a SQLAlchemy URL to excel-dbapi connect() arguments.
+
+        URL formats:
+            excel:///relative/path.xlsx   →  file_path="relative/path.xlsx"
+            excel:////absolute/path.xlsx  →  file_path="/absolute/path.xlsx"
+        """
+        # url.database contains the path after the third slash
+        file_path = url.database
+        if not file_path:
+            raise ValueError("No file path in URL. Use excel:///path/to/file.xlsx")
+
+        kwargs: dict[str, Any] = {
+            "file_path": file_path,
+            "engine": "openpyxl",
+            "autocommit": False,
+            "create": True,
+        }
+
+        # Forward query parameters
+        query = dict(url.query)
+        if "engine" in query:
+            kwargs["engine"] = query.pop("engine")
+        if "autocommit" in query:
+            kwargs["autocommit"] = query.pop("autocommit").lower() in (
+                "true",
+                "1",
+                "yes",
+            )
+
+        return ([], kwargs)
+
+    def on_connect(self) -> None:
+        """No-op: no special connection initialization needed."""
+
+    def do_execute(
+        self,
+        cursor: Any,
+        statement: str,
+        parameters: Any,
+        context: Any = None,
+    ) -> None:
+        """Execute a statement, normalizing whitespace for excel-dbapi."""
+        normalized = re.sub(r"\s+", " ", statement).strip()
+        cursor.execute(normalized, parameters)
+
+    def do_execute_no_params(
+        self,
+        cursor: Any,
+        statement: str,
+        context: Any = None,
+    ) -> None:
+        """Execute a statement with no parameters."""
+        normalized = re.sub(r"\s+", " ", statement).strip()
+        cursor.execute(normalized, None)
+
+    def do_ping(self, dbapi_connection: Any) -> bool:
+        """Ping the connection by verifying it's not closed."""
+        return not getattr(dbapi_connection, "closed", True)
+
+    def is_disconnect(self, e: Exception, connection: Any, cursor: Any) -> bool:
+        """Excel connections don't have network-level disconnects."""
+        return False
+
+    def get_default_isolation_level(self, dbapi_conn: Any) -> str:
+        return "SERIALIZABLE"
+
+    def _check_unicode_returns(
+        self, connection: Any, additional_tests: Any = None
+    ) -> bool:
+        return True
+
+    def _check_unicode_description(self, connection: Any) -> bool:
+        return True
+
+    def has_table(
+        self,
+        connection: Any,
+        table_name: str,
+        schema: str | None = None,
+        **kw: Any,
+    ) -> bool:
+        """Check if a worksheet (table) exists."""
+        import excel_dbapi
+
+        raw_conn = connection.connection.dbapi_connection
+        return excel_dbapi.has_table(raw_conn, table_name)
+
+    def do_begin(self, dbapi_connection: Any) -> None:
+        """No-op: excel-dbapi doesn't have explicit BEGIN."""
+
+    def do_commit(self, dbapi_connection: Any) -> None:
+        """Commit (save) the workbook."""
+        dbapi_connection.commit()
+
+    def do_rollback(self, dbapi_connection: Any) -> None:
+        """Rollback is not supported with autocommit=False in a meaningful way
+        for Excel files. We silently ignore it to avoid crashes during
+        connection pool cleanup."""
+
+    def do_close(self, dbapi_connection: Any) -> None:
+        """Close the underlying excel-dbapi connection."""
+        dbapi_connection.close()
