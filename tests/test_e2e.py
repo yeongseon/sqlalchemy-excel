@@ -224,6 +224,26 @@ def test_e2e_aggregate_sum_avg_min_max(tmp_path) -> None:
     engine.dispose()
 
 
+def test_e2e_where_aggregate_rejected(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+
+    with engine.connect() as conn:
+        stmt = select(users.c.name).where(func.count(users.c.id) > 1)
+        with pytest.raises(
+            (exc.DBAPIError, ValueError),
+            match="Aggregate functions are not allowed in WHERE clause; use HAVING instead",
+        ):
+            conn.execute(stmt).all()
+
+    engine.dispose()
+
+
 def test_e2e_group_by(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
