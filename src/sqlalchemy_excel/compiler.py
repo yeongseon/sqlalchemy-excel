@@ -146,8 +146,31 @@ class ExcelCompiler(compiler.SQLCompiler):
             raise exc.CompileError("Excel dialect does not support GROUP BY")
         return ""
 
-    def having_clause(self, select: Any, **kw: Any) -> str:
-        raise exc.CompileError("Excel dialect does not support HAVING")
+    def _compose_select_body(
+        self,
+        text: str,
+        select: Any,
+        compile_state: Any,
+        inner_columns: Any,
+        froms: Any,
+        byfrom: Any,
+        toplevel: bool,
+        kwargs: Any,
+    ) -> str:
+        if getattr(select, "_having_criteria", None):
+            raise exc.CompileError("Excel dialect does not support HAVING")
+        return str(
+            super()._compose_select_body(  # type: ignore[no-untyped-call]
+                text,
+                select,
+                compile_state,
+                inner_columns,
+                froms,
+                byfrom,
+                toplevel,
+                kwargs,
+            )
+        )
 
     def limit_clause(self, select: Any, **kw: Any) -> str:
         text = ""
