@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING, Any, Literal, cast
+from urllib.parse import unquote as _url_unquote
 
 from sqlalchemy import event, pool
 from sqlalchemy.engine import default
@@ -230,3 +231,62 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
     def do_close(self, dbapi_connection: Any) -> None:
         """Close the underlying excel-dbapi connection."""
         dbapi_connection.close()
+
+
+class ExcelGraphDialect(ExcelDialect):  # type: ignore[misc,unused-ignore]
+    """SQLAlchemy dialect for remote Excel files via Microsoft Graph API.
+
+    Connection URLs::
+
+        # With drive_id and item_id
+        excel+graph:///drive_id/item_id
+
+        # With query parameters
+        excel+graph:///drive_id/item_id?readonly=false
+
+    Credentials must be passed via ``connect_args``::
+
+        engine = create_engine(
+            "excel+graph:///drive_id/item_id",
+            connect_args={"credential": DefaultAzureCredential()},
+        )
+    """
+
+    driver: str = "graph"
+
+    def create_connect_args(self, url: URL) -> ConnectArgsType:
+        """Translate an excel+graph:// URL to excel-dbapi connect() arguments.
+
+        URL format: excel+graph:///drive_id/item_id
+        Maps to DSN: msgraph://drives/{drive_id}/items/{item_id}
+        """
+        database = url.database
+        if not database:
+            raise ValueError(
+                "No drive/item path in URL. Use excel+graph:///drive_id/item_id"
+            )
+
+        parts = database.strip("/").split("/")
+        if len(parts) != 2:
+            raise ValueError(
+                f"Expected excel+graph:///drive_id/item_id (got {len(parts)} path segments: {database!r})"
+            )
+
+        drive_id = _url_unquote(parts[0])
+        item_id = _url_unquote(parts[1])
+        dsn = f"msgraph://drives/{drive_id}/items/{item_id}"
+
+        kwargs = {
+            "file_path": dsn,
+            "engine": None,
+            "autocommit": True,
+            "create": False,
+        }
+
+        query = dict(url.query)
+        if "readonly" in query:
+            raw = query.pop("readonly")
+            val = raw[0] if isinstance(raw, tuple) else raw
+            kwargs["readonly"] = str(val).lower() in ("true", "1", "yes")
+
+        return ([], kwargs)

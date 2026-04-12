@@ -33,6 +33,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+graph = ["excel-dbapi[graph]>=0.2.0"]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
@@ -42,6 +43,7 @@ dev = [
 
 [project.entry-points."sqlalchemy.dialects"]
 excel = "sqlalchemy_excel.dialect:ExcelDialect"
+"excel.graph" = "sqlalchemy_excel.dialect:ExcelGraphDialect"
 
 [project.urls]
 Homepage = "https://github.com/yeongseon/sqlalchemy-excel"
