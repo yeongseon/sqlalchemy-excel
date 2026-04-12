@@ -8,10 +8,10 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.dialects import registry
 from sqlalchemy.engine import make_url
 
-
 # ---------------------------------------------------------------------------
 # Mock transport (minimal Graph API stub)
 # ---------------------------------------------------------------------------
+
 
 def _graph_handler(request: httpx.Request) -> httpx.Response:
     """Stateless mock handler for read-only Graph API tests."""
@@ -49,6 +49,7 @@ def _graph_handler(request: httpx.Request) -> httpx.Response:
 # ---------------------------------------------------------------------------
 # URL Parsing Tests
 # ---------------------------------------------------------------------------
+
 
 class TestGraphURLParsing:
     def test_url_components(self):
@@ -115,6 +116,7 @@ class TestGraphURLParsing:
 # Dialect Feature Flags
 # ---------------------------------------------------------------------------
 
+
 class TestGraphDialectFlags:
     def test_driver(self):
         d = registry.load("excel.graph")()
@@ -128,6 +130,7 @@ class TestGraphDialectFlags:
 # ---------------------------------------------------------------------------
 # Integration: SELECT via mock transport
 # ---------------------------------------------------------------------------
+
 
 class TestGraphDialectIntegration:
     def test_select_via_engine(self):

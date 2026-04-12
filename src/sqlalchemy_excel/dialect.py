@@ -253,6 +253,7 @@ class ExcelGraphDialect(ExcelDialect):  # type: ignore[misc,unused-ignore]
     """
 
     driver: str = "graph"
+    supports_statement_cache: bool = False
 
     def create_connect_args(self, url: URL) -> ConnectArgsType:
         """Translate an excel+graph:// URL to excel-dbapi connect() arguments.

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.1] - 2026-04-12
+
+### Fixed
+- Add explicit `supports_statement_cache = False` to `ExcelGraphDialect` to suppress SQLAlchemy caching warning
+- Fix import ordering in test_graph_dialect.py for ruff I001 compliance
+
 ## [0.3.0] - 2026-04-12
 
 ### Added
