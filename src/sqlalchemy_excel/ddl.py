@@ -38,7 +38,13 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
         table_name = self.preparer.format_table(table)
         return f"DROP TABLE {table_name}"
 
-    def visit_create_index(self, create: Any, **kw: Any) -> str:
+    def visit_create_index(
+        self,
+        create: Any,
+        include_schema: Any = False,
+        include_table_schema: Any = True,
+        **kw: Any,
+    ) -> str:
         raise exc.CompileError("Excel dialect does not support CREATE INDEX")
 
     def visit_drop_index(self, drop: Any, **kw: Any) -> str:
@@ -50,7 +56,12 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
     def visit_drop_constraint(self, drop: Any, **kw: Any) -> str:
         raise exc.CompileError("Excel dialect does not support constraints")
 
-    def visit_create_sequence(self, create: Any, **kw: Any) -> str:
+    def visit_create_sequence(
+        self,
+        create: Any,
+        prefix: Any = None,
+        **kw: Any,
+    ) -> str:
         raise exc.CompileError("Excel dialect does not support sequences")
 
     def visit_drop_sequence(self, drop: Any, **kw: Any) -> str:

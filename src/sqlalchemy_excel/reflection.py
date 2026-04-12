@@ -6,11 +6,11 @@ tables (worksheets), columns, and primary keys from an Excel file.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import types as sa_types
 
-_TYPE_MAP: dict[str, type[sa_types.TypeEngine]] = {
+_TYPE_MAP: dict[str, type[sa_types.TypeEngine[Any]]] = {
     "TEXT": sa_types.String,
     "INTEGER": sa_types.Integer,
     "FLOAT": sa_types.Float,
@@ -20,7 +20,7 @@ _TYPE_MAP: dict[str, type[sa_types.TypeEngine]] = {
 }
 
 
-def _sa_type_from_name(type_name: str) -> sa_types.TypeEngine:
+def _sa_type_from_name(type_name: str) -> sa_types.TypeEngine[Any]:
     """Convert an excel-dbapi type name to a SQLAlchemy type instance."""
     cls = _TYPE_MAP.get(type_name.upper(), sa_types.String)
     return cls()
@@ -43,7 +43,7 @@ class ExcelInspectionMixin:
         import excel_dbapi
 
         raw_conn = connection.connection.dbapi_connection
-        return excel_dbapi.list_tables(raw_conn, include_meta=False)
+        return cast("list[str]", excel_dbapi.list_tables(raw_conn, include_meta=False))
 
     def get_view_names(
         self,

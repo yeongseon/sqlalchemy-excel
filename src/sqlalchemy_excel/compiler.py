@@ -22,10 +22,13 @@ So we override the identifier preparer to never use table prefixes.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, Literal
 
 from sqlalchemy import exc
 from sqlalchemy.sql import compiler, elements
+
+if TYPE_CHECKING:
+    from collections.abc import MutableMapping
 
 
 class ExcelIdentifierPreparer(compiler.IdentifierPreparer):
@@ -35,10 +38,9 @@ class ExcelIdentifierPreparer(compiler.IdentifierPreparer):
     or table prefixes.
     """
 
-    reserved_words: ClassVar[set[str]] = set()
-
     def __init__(self, dialect: Any) -> None:
         super().__init__(dialect, initial_quote="", final_quote="")
+        self.reserved_words = set()
 
     def quote_identifier(self, value: str) -> str:
         return value
@@ -55,7 +57,9 @@ class ExcelCompiler(compiler.SQLCompiler):
         column: Any,
         add_to_result_map: Any = None,
         include_table: bool = True,
-        **kw: Any,
+        result_map_targets: tuple[Any, ...] = (),
+        ambiguous_table_name_map: MutableMapping[str, str] | None = None,
+        **kwargs: Any,
     ) -> str:
         """Override to never include table prefix in column references.
 
@@ -67,7 +71,9 @@ class ExcelCompiler(compiler.SQLCompiler):
             column,
             add_to_result_map=add_to_result_map,
             include_table=False,
-            **kw,
+            result_map_targets=result_map_targets,
+            ambiguous_table_name_map=ambiguous_table_name_map,
+            **kwargs,
         )
 
     def visit_label(
@@ -104,11 +110,13 @@ class ExcelCompiler(compiler.SQLCompiler):
                 )
 
             # Emit the column WITHOUT "AS <label>"
-            return label.element._compiler_dispatch(
-                self,
-                within_columns_clause=True,
-                within_label_clause=True,
-                **kw,
+            return str(
+                label.element._compiler_dispatch(
+                    self,
+                    within_columns_clause=True,
+                    within_label_clause=True,
+                    **kw,
+                )
             )
 
         if render_label_as_label is label:
@@ -118,11 +126,19 @@ class ExcelCompiler(compiler.SQLCompiler):
                 labelname = label.name
             return self.preparer.format_label(label, labelname)
 
-        return label.element._compiler_dispatch(self, within_columns_clause=False, **kw)
+        return str(
+            label.element._compiler_dispatch(self, within_columns_clause=False, **kw)
+        )
 
     # ── Unsupported feature guards ─────────────────────────
 
-    def visit_join(self, join: Any, **kw: Any) -> str:
+    def visit_join(
+        self,
+        join: Any,
+        asfrom: Any = False,
+        from_linter: Any = None,
+        **kwargs: Any,
+    ) -> str:
         raise exc.CompileError("Excel dialect does not support JOIN")
 
     def group_by_clause(self, select: Any, **kw: Any) -> str:
@@ -141,7 +157,17 @@ class ExcelCompiler(compiler.SQLCompiler):
             raise exc.CompileError("Excel dialect does not support OFFSET")
         return text
 
-    def visit_cte(self, cte: Any, **kw: Any) -> str:
+    def visit_cte(
+        self,
+        cte: Any,
+        asfrom: bool = False,
+        ashint: bool = False,
+        fromhints: dict[Any, str] | None = None,
+        visiting_cte: Any = None,
+        from_linter: Any = None,
+        cte_opts: Any = None,
+        **kwargs: Any,
+    ) -> str | None:
         raise exc.CompileError("Excel dialect does not support CTEs")
 
     def visit_subquery(self, subquery: Any, **kw: Any) -> str:
@@ -155,5 +181,9 @@ class ExcelCompiler(compiler.SQLCompiler):
     ) -> str:
         raise exc.CompileError("Excel dialect does not support RETURNING")
 
-    def for_update_clause(self, select: Any, **kw: Any) -> str:
+    def for_update_clause(
+        self,
+        select: Any,
+        **kw: Any,
+    ) -> Literal[" FOR UPDATE"]:
         raise exc.CompileError("Excel dialect does not support SELECT ... FOR UPDATE")

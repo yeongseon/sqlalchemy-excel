@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from sqlalchemy import event, pool
 from sqlalchemy.engine import default
@@ -17,6 +17,7 @@ from .types import ExcelTypeCompiler
 if TYPE_CHECKING:
     from sqlalchemy.engine import URL
     from sqlalchemy.engine.interfaces import ConnectArgsType
+    from sqlalchemy.sql.compiler import IdentifierPreparer
 
 
 def _after_create(
@@ -67,7 +68,10 @@ event.listen(Table, "after_create", _after_create)
 event.listen(Table, "after_drop", _after_drop)
 
 
-class ExcelDialect(ExcelInspectionMixin, default.DefaultDialect):  # type: ignore[misc]
+class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleMethodOverride]
+    ExcelInspectionMixin,
+    default.DefaultDialect,
+):
     """SQLAlchemy dialect for Excel files via excel-dbapi.
 
     Connection URLs::
@@ -81,30 +85,32 @@ class ExcelDialect(ExcelInspectionMixin, default.DefaultDialect):  # type: ignor
 
     """
 
-    name: ClassVar[str] = "excel"
-    driver: ClassVar[str] = "dbapi"
-    default_paramstyle: ClassVar[str] = "qmark"
+    name: str = "excel"
+    driver: str = "dbapi"
+    default_paramstyle: str = "qmark"
 
     # ── Feature flags ──────────────────────────────────────
-    supports_alter: ClassVar[bool] = False
-    supports_sequences: ClassVar[bool] = False
-    supports_schemas: ClassVar[bool] = False
-    supports_views: ClassVar[bool] = False
-    supports_native_boolean: ClassVar[bool] = True
-    supports_native_decimal: ClassVar[bool] = False
-    supports_statement_cache: ClassVar[bool] = False
-    supports_default_values: ClassVar[bool] = False
-    supports_default_metavalue: ClassVar[bool] = False
-    supports_empty_insert: ClassVar[bool] = False
-    supports_multivalues_insert: ClassVar[bool] = False
-    postfetch_lastrowid: ClassVar[bool] = False
-    insertmanyvalues_implicit_sentinel: ClassVar[Any] = None
+    supports_alter: bool = False
+    supports_sequences: bool = False
+    supports_schemas: bool = False
+    supports_views: bool = False
+    supports_native_boolean: bool = True
+    supports_native_decimal: bool = False
+    supports_statement_cache: bool = False
+    supports_default_values: bool = False
+    supports_default_metavalue: bool = False
+    supports_empty_insert: bool = False
+    supports_multivalues_insert: bool = False
+    postfetch_lastrowid: bool = False
+    insertmanyvalues_implicit_sentinel: Any = None
 
     # ── Compiler classes ──────────────────────────────────
     statement_compiler = ExcelCompiler
     ddl_compiler = ExcelDDLCompiler
     type_compiler_cls = ExcelTypeCompiler
-    preparer = ExcelIdentifierPreparer
+    preparer: type[IdentifierPreparer] = cast(
+        "type[IdentifierPreparer]", ExcelIdentifierPreparer
+    )
 
     @classmethod
     def import_dbapi(cls) -> Any:
@@ -140,7 +146,12 @@ class ExcelDialect(ExcelInspectionMixin, default.DefaultDialect):  # type: ignor
         if "engine" in query:
             kwargs["engine"] = query.pop("engine")
         if "autocommit" in query:
-            kwargs["autocommit"] = query.pop("autocommit").lower() in (
+            autocommit = query.pop("autocommit")
+            if isinstance(autocommit, tuple):
+                autocommit_text = autocommit[0] if autocommit else ""
+            else:
+                autocommit_text = autocommit
+            kwargs["autocommit"] = autocommit_text.lower() in (
                 "true",
                 "1",
                 "yes",
@@ -180,7 +191,7 @@ class ExcelDialect(ExcelInspectionMixin, default.DefaultDialect):  # type: ignor
         """Excel connections don't have network-level disconnects."""
         return False
 
-    def get_default_isolation_level(self, dbapi_conn: Any) -> str:
+    def get_default_isolation_level(self, dbapi_conn: Any) -> Literal["SERIALIZABLE"]:
         return "SERIALIZABLE"
 
     def _check_unicode_returns(
@@ -202,7 +213,7 @@ class ExcelDialect(ExcelInspectionMixin, default.DefaultDialect):  # type: ignor
         import excel_dbapi
 
         raw_conn = connection.connection.dbapi_connection
-        return excel_dbapi.has_table(raw_conn, table_name)
+        return cast("bool", excel_dbapi.has_table(raw_conn, table_name))
 
     def do_begin(self, dbapi_connection: Any) -> None:
         """No-op: excel-dbapi doesn't have explicit BEGIN."""
