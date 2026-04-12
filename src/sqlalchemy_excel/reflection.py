@@ -6,7 +6,7 @@ tables (worksheets), columns, and primary keys from an Excel file.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import types as sa_types
 
@@ -43,7 +43,7 @@ class ExcelInspectionMixin:
         import excel_dbapi
 
         raw_conn = connection.connection.dbapi_connection
-        return excel_dbapi.list_tables(raw_conn, include_meta=False)
+        return cast("list[str]", excel_dbapi.list_tables(raw_conn, include_meta=False))
 
     def get_view_names(
         self,

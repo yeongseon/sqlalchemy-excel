@@ -213,7 +213,7 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
         import excel_dbapi
 
         raw_conn = connection.connection.dbapi_connection
-        return excel_dbapi.has_table(raw_conn, table_name)
+        return cast("bool", excel_dbapi.has_table(raw_conn, table_name))
 
     def do_begin(self, dbapi_connection: Any) -> None:
         """No-op: excel-dbapi doesn't have explicit BEGIN."""
