@@ -68,6 +68,55 @@ class ExcelCompiler(compiler.SQLCompiler):
     _subquery_depth: int = 0
     _has_join: bool = False
 
+    @staticmethod
+    def _validate_join_tree(join: Join) -> None:
+        """Validate a Join tree against excel-dbapi constraints.
+
+        Rejects:
+        - Chained joins (more than one JOIN node in the tree)
+        - FULL OUTER JOIN or RIGHT JOIN
+        - Non-equality ON clauses (only col = col and AND-combined equalities allowed)
+        """
+        # 1. Reject chained joins: if either side is itself a Join, we have >1 join
+        if isinstance(join.left, Join) or isinstance(join.right, Join):
+            raise exc.CompileError(
+                "Excel dialect supports only one JOIN per query"
+            )
+
+        # 2. Reject FULL OUTER JOIN
+        if join.full:
+            raise exc.CompileError(
+                "Excel dialect does not support FULL OUTER JOIN"
+            )
+
+        # 3. Validate ON clause structure: only equality comparisons allowed
+        onclause = join.onclause
+        if onclause is None:
+            raise exc.CompileError(
+                "Excel dialect requires an ON clause for JOIN"
+            )
+
+        def _check_on_clause(clause: Any) -> None:
+            """Recursively validate that ON clause contains only equality comparisons."""
+            visit_name = getattr(clause, "__visit_name__", None)
+            if visit_name == "binary" and hasattr(clause, "operator"):
+                if clause.operator is not operators.eq:
+                    raise exc.CompileError(
+                        "Excel dialect only supports '=' comparisons in JOIN ON clause"
+                    )
+                return
+            # AND-combined clause list
+            if visit_name == "expression_clauselist":
+                for sub_clause in clause.clauses:
+                    _check_on_clause(sub_clause)
+                return
+            # Anything else (true(), OR, unary, etc.) is unsupported
+            raise exc.CompileError(
+                "Excel dialect only supports equality comparisons in JOIN ON clause"
+            )
+
+        _check_on_clause(onclause)
+
     def _setup_select_stack(
         self,
         select: Any,
@@ -235,6 +284,7 @@ class ExcelCompiler(compiler.SQLCompiler):
         **kwargs: Any,
     ) -> str:
         self._has_join = True
+        self._validate_join_tree(join)
         return str(
             super().visit_join(
                 join, asfrom=asfrom, from_linter=from_linter, **kwargs

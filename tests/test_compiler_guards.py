@@ -513,3 +513,110 @@ def test_compiler_rejects_subquery_containing_join(tmp_xlsx: str) -> None:
         stmt.compile(dialect=engine.dialect)
 
     engine.dispose()
+
+
+def test_compiler_rejects_chained_joins(tmp_xlsx: str) -> None:
+    """Chained JOIN (more than one JOIN) should be rejected at compile time."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+    admins = Table(
+        "admins",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+    )
+
+    stmt = (
+        select(users.c.name)
+        .join(orders, users.c.id == orders.c.user_id)
+        .join(admins, users.c.id == admins.c.user_id)
+    )
+    with pytest.raises(exc.CompileError, match="only one JOIN per query"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_full_outer_join(tmp_xlsx: str) -> None:
+    """FULL OUTER JOIN should be rejected at compile time."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = (
+        select(users.c.name, orders.c.user_id)
+        .join(orders, users.c.id == orders.c.user_id, full=True)
+    )
+    with pytest.raises(exc.CompileError, match="FULL OUTER JOIN"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_non_equality_on_clause(tmp_xlsx: str) -> None:
+    """Non-equality ON clause (e.g. >) should be rejected at compile time."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = (
+        select(users.c.name, orders.c.user_id)
+        .join(orders, users.c.id > orders.c.user_id)
+    )
+    with pytest.raises(exc.CompileError, match="'=' comparisons"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_true_on_clause(tmp_xlsx: str) -> None:
+    """true() ON clause (cross-join-like) should be rejected at compile time."""
+    from sqlalchemy import true
+
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = (
+        select(users.c.name, orders.c.user_id)
+        .join(orders, true())
+    )
+    with pytest.raises(exc.CompileError, match="equality comparisons"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_accepts_and_combined_equality_on(tmp_xlsx: str) -> None:
+    """AND-combined equality ON clause should be accepted."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users = Table(
+        "users",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("dept_id", Integer),
+    )
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("dept_id", Integer),
+    )
+
+    stmt = (
+        select(users.c.id, orders.c.id)
+        .join(
+            orders,
+            (users.c.id == orders.c.user_id) & (users.c.dept_id == orders.c.dept_id),
+        )
+    )
+    # Should not raise
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql_text = str(compiled)
+    assert "JOIN" in sql_text
+    assert "AND" in sql_text
+
+    engine.dispose()

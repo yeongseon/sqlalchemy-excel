@@ -14,6 +14,7 @@ from sqlalchemy import (
     insert,
     inspect,
     select,
+    true,
     update,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
@@ -557,5 +558,85 @@ def test_e2e_join_with_as_alias(tmp_path) -> None:
         )
         rows = conn.execute(stmt).all()
         assert rows == [("Alice", 100), ("Bob", 200)]
+
+    engine.dispose()
+
+
+def test_e2e_chained_join_rejected_at_compile_time(tmp_path) -> None:
+    """Chained JOIN (three tables) raises CompileError, not a later DBAPI error."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+    items = Table(
+        "items",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("order_id", Integer),
+    )
+    metadata.create_all(engine)
+
+    stmt = (
+        select(users.c.name)
+        .join(orders, users.c.id == orders.c.user_id)
+        .join(items, orders.c.id == items.c.order_id)
+    )
+    with pytest.raises(exc.CompileError, match="only one JOIN per query"):
+        with engine.connect() as conn:
+            conn.execute(stmt).all()
+
+    engine.dispose()
+
+
+def test_e2e_full_outer_join_rejected_at_compile_time(tmp_path) -> None:
+    """FULL OUTER JOIN raises CompileError, not a later DBAPI error."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+    )
+    metadata.create_all(engine)
+
+    stmt = (
+        select(users.c.name, orders.c.user_id)
+        .join(orders, users.c.id == orders.c.user_id, full=True)
+    )
+    with pytest.raises(exc.CompileError, match="FULL OUTER JOIN"):
+        with engine.connect() as conn:
+            conn.execute(stmt).all()
+
+    engine.dispose()
+
+
+def test_e2e_non_equality_on_clause_rejected_at_compile_time(tmp_path) -> None:
+    """Non-equality ON clause (e.g. true()) raises CompileError."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+    )
+    metadata.create_all(engine)
+
+    stmt = (
+        select(users.c.name, orders.c.user_id)
+        .join(orders, true())
+    )
+    with pytest.raises(exc.CompileError, match="equality comparisons"):
+        with engine.connect() as conn:
+            conn.execute(stmt).all()
 
     engine.dispose()
