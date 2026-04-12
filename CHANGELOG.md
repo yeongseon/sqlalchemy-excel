@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0] - 2026-04-12
+
+### Added
+- HAVING guard via `_compose_select_body` override (previously `having_clause` was never called by SQLAlchemy)
+- End-to-end tests: CRUD round-trip, ORM Session, inspector reflection, DDL lifecycle, rollback no-op
+- Compiler guard tests for all unsupported SQL features
+- Type compiler full coverage tests
+- Reflection edge case tests
+
+### Changed
+- README restructured: limitations-first layout, Graph API moved to experimental section
+- Test coverage: 80% → 98% (117 tests)
+
 ## [0.3.2] - 2026-04-12
 
 ### Fixed
