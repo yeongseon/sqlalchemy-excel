@@ -134,6 +134,61 @@ class TestSelect:
             # Each row should have 2 columns
             assert len(rows[0]) == 2
 
+    def test_select_where_in(self, populated_engine, users_table):
+        with populated_engine.connect() as conn:
+            self._seed(conn, users_table)
+            stmt = select(users_table).where(
+                users_table.c.name.in_(["Alice", "Charlie"])
+            )
+            result = conn.execute(stmt)
+            rows = result.fetchall()
+            assert len(rows) == 2
+            names = {row[1] for row in rows}
+            assert names == {"Alice", "Charlie"}
+
+    def test_select_where_between(self, populated_engine, users_table):
+        with populated_engine.connect() as conn:
+            self._seed(conn, users_table)
+            stmt = select(users_table).where(users_table.c.age.between(26, 31))
+            result = conn.execute(stmt)
+            rows = result.fetchall()
+            assert len(rows) == 1
+            assert rows[0][1] == "Alice"
+
+    def test_select_where_like(self, populated_engine, users_table):
+        with populated_engine.connect() as conn:
+            self._seed(conn, users_table)
+            stmt = select(users_table).where(users_table.c.name.like("A%"))
+            result = conn.execute(stmt)
+            rows = result.fetchall()
+            assert len(rows) == 1
+            assert rows[0][1] == "Alice"
+
+    def test_select_where_like_contains(self, populated_engine, users_table):
+        with populated_engine.connect() as conn:
+            self._seed(conn, users_table)
+            stmt = select(users_table).where(users_table.c.name.like("%ob%"))
+            result = conn.execute(stmt)
+            rows = result.fetchall()
+            assert len(rows) == 1
+            assert rows[0][1] == "Bob"
+
+    def test_select_where_in_with_order_limit(self, populated_engine, users_table):
+        with populated_engine.connect() as conn:
+            self._seed(conn, users_table)
+            stmt = (
+                select(users_table)
+                .where(users_table.c.name.in_(["Alice", "Bob", "Charlie"]))
+                .order_by(users_table.c.age.desc())
+                .limit(2)
+            )
+            result = conn.execute(stmt)
+            rows = result.fetchall()
+            assert len(rows) == 2
+            # Charlie(35), Alice(30) — desc by age, limit 2
+            assert rows[0][1] == "Charlie"
+            assert rows[1][1] == "Alice"
+
 
 class TestUpdate:
     """Test UPDATE operations."""
