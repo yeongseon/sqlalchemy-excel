@@ -226,16 +226,14 @@ sqlalchemy-excel maps SQLAlchemy types to Excel storage types:
 
 sqlalchemy-excel has some limitations due to the nature of Excel as a database:
 
-- **No JOIN operations**: Single-table queries only
-- **No GROUP BY, HAVING**: HAVING raises `CompileError` at compile time; GROUP BY is not supported
-- **No DISTINCT**: Not supported
-- **No OFFSET**: Only LIMIT is supported
-- **No subqueries or CTEs**: Simple queries only
-- **No aggregate functions**: COUNT, SUM, AVG, etc. not available
-- **No ALTER TABLE**: Cannot modify table structure after creation
-- **No foreign keys or indexes**: Excel has no concept of these
-- **No concurrent writes**: Use a single-writer model
-- **Rollback is a no-op**: `Session.rollback()` does nothing — the underlying driver's rollback only works at the DB-API connection level with `autocommit=False`
+- **Constrained JOIN support**: Only single INNER/LEFT JOIN with equality ON clause (`t1.col = t2.col`). No chained JOINs, FULL OUTER JOIN, OR/non-equality ON clauses, or non-column operands.
+- **Non-correlated subqueries only**: Subqueries supported only in `WHERE ... IN (SELECT ...)`. No correlated, nested, or DML subqueries.
+- **No CTEs, UNION, INTERSECT, EXCEPT**: Only simple SELECT/INSERT/UPDATE/DELETE.
+- **No window functions**: `OVER` clause raises `CompileError`.
+- **No ALTER TABLE**: Cannot modify table structure after creation.
+- **No foreign keys or indexes**: Excel has no concept of these.
+- **No concurrent writes**: Use a single-writer model.
+- **Rollback is a no-op**: `Session.rollback()` does nothing — the underlying driver's rollback only works at the DB-API connection level with `autocommit=False`.
 
 ## Security
 

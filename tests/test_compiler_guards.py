@@ -703,3 +703,66 @@ def test_compiler_rejects_function_operand_in_on(tmp_xlsx: str) -> None:
         stmt.compile(dialect=engine.dialect)
 
     engine.dispose()
+
+
+def test_compiler_rejects_same_side_on_clause(tmp_xlsx: str) -> None:
+    """ON clause comparing columns from the same table should be rejected."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users = Table(
+        "users",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("age", Integer),
+    )
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+    )
+
+    stmt = (
+        select(users.c.id, orders.c.id)
+        .join(orders, users.c.id == users.c.age)
+    )
+    with pytest.raises(exc.CompileError, match="different join sources"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_handles_grouping_wrapper_in_on(tmp_xlsx: str) -> None:
+    """Grouping-wrapped AND ON clause should be accepted."""
+    from sqlalchemy import and_
+
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users = Table(
+        "users",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("dept_id", Integer),
+    )
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("dept_id", Integer),
+    )
+
+    # Use and_() explicitly which may create a Grouping wrapper
+    stmt = (
+        select(users.c.id, orders.c.id)
+        .join(
+            orders,
+            and_(users.c.id == orders.c.user_id, users.c.dept_id == orders.c.dept_id),
+        )
+    )
+    # Should not raise
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql_text = str(compiled)
+    assert "JOIN" in sql_text
+
+    engine.dispose()

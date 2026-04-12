@@ -694,3 +694,33 @@ def test_e2e_literal_on_clause_rejected_at_compile_time(tmp_path) -> None:
             conn.execute(stmt).all()
 
     engine.dispose()
+
+
+def test_e2e_same_side_on_clause_rejected_at_compile_time(tmp_path) -> None:
+    """ON clause with same-side columns (users.id == users.age) raises CompileError."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = Table(
+        "users",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+        Column("age", Integer),
+    )
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+    )
+    metadata.create_all(engine)
+
+    stmt = (
+        select(users.c.name, orders.c.user_id)
+        .join(orders, users.c.id == users.c.age)
+    )
+    with pytest.raises(exc.CompileError, match="different join sources"):
+        with engine.connect() as conn:
+            conn.execute(stmt).all()
+
+    engine.dispose()

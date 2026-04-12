@@ -11,27 +11,29 @@
 [![Docs](https://img.shields.io/badge/docs-GitHub-blue.svg)](https://github.com/yeongseon/sqlalchemy-excel/tree/main/docs)
 
 SQLAlchemy dialect for Excel files — use Excel worksheets as database tables.
-This is a **narrow-scope dialect**: it supports basic CRUD and ORM mapping, but not
-relational features like JOINs or aggregations.
+This dialect supports CRUD, ORM mapping, aggregations, and constrained JOINs.
 
 ## Limitations (Read First)
 
-Before writing any code, understand what this dialect **cannot** do:
+Before writing any code, understand the dialect's capabilities and limits:
 
 | Feature | Supported? |
 |---------|-----------|
-| SELECT with WHERE, ORDER BY, LIMIT | ✅ |
+| SELECT with WHERE, ORDER BY, LIMIT, OFFSET | ✅ |
 | INSERT, UPDATE, DELETE | ✅ |
 | CREATE TABLE / DROP TABLE | ✅ |
 | ORM with DeclarativeBase | ✅ |
 | Schema inspection (tables, columns) | ✅ |
 | IN, BETWEEN, LIKE operators | ✅ |
-| **JOIN** (any variant) | ❌ |
-| **GROUP BY / HAVING** | ❌ |
-| **DISTINCT** | ❌ |
-| **OFFSET** | ❌ |
-| **Subqueries / CTEs** | ❌ |
-| **Aggregate functions** (COUNT, SUM, ...) | ❌ |
+| DISTINCT | ✅ |
+| GROUP BY / HAVING | ✅ |
+| Aggregate functions (COUNT, SUM, AVG, MIN, MAX) | ✅ |
+| Subqueries in WHERE ... IN | ✅ (non-correlated only) |
+| INNER / LEFT JOIN (single, equality ON) | ✅ (constrained) |
+| **Chained JOINs** (3+ tables) | ❌ |
+| **FULL OUTER JOIN** | ❌ |
+| **CTEs / UNION / INTERSECT / EXCEPT** | ❌ |
+| **Window functions (OVER)** | ❌ |
 | **ALTER TABLE** | ❌ |
 | **Foreign keys / indexes** | ❌ |
 | **Concurrent writes** | ❌ |

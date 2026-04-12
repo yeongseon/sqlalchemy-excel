@@ -78,6 +78,7 @@ class ExcelCompiler(compiler.SQLCompiler):
         - FULL OUTER JOIN
         - Non-equality ON clauses (only col = col and AND-combined equalities allowed)
         - Non-column operands in ON (literals, functions, arithmetic)
+        - Same-source ON comparisons (both operands from same table)
         """
         # 1. Reject chained joins: if either side is itself a Join, we have >1 join
         if isinstance(join.left, Join) or isinstance(join.right, Join):
@@ -97,9 +98,11 @@ class ExcelCompiler(compiler.SQLCompiler):
             raise exc.CompileError(
                 "Excel dialect requires an ON clause for JOIN"
             )
+        left_source = join.left
+        right_source = join.right
 
         def _check_on_clause(clause: Any) -> None:
-            """Recursively validate that ON clause contains only column equality comparisons."""
+            """Recursively validate that ON clause contains only cross-source column equalities."""
             visit_name = getattr(clause, "__visit_name__", None)
             if visit_name == "binary" and hasattr(clause, "operator"):
                 if clause.operator is not operators.eq:
@@ -113,6 +116,18 @@ class ExcelCompiler(compiler.SQLCompiler):
                         raise exc.CompileError(
                             "Excel dialect only supports column references in JOIN ON clause"
                         )
+                # Validate cross-source: one column from each side of the join
+                left_tbl = getattr(clause.left, "table", None)
+                right_tbl = getattr(clause.right, "table", None)
+                left_from_left = left_tbl is left_source
+                left_from_right = left_tbl is right_source
+                right_from_left = right_tbl is left_source
+                right_from_right = right_tbl is right_source
+                cross = (left_from_left and right_from_right) or (left_from_right and right_from_left)
+                if not cross:
+                    raise exc.CompileError(
+                        "Excel dialect requires ON clause to compare columns from different join sources"
+                    )
                 return
             # AND-combined clause list (reject OR and other operators)
             if visit_name == "expression_clauselist":
