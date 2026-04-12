@@ -92,6 +92,34 @@ def test_compiler_rejects_count_distinct(tmp_xlsx: str) -> None:
     engine.dispose()
 
 
+def test_compiler_rejects_count_literal(tmp_xlsx: str) -> None:
+    from sqlalchemy import text
+
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    stmt = select(func.count(text("1"))).select_from(users)
+    with pytest.raises(exc.CompileError, match="expression arguments"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_count_string_literal(tmp_xlsx: str) -> None:
+    from sqlalchemy import literal
+
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    stmt = select(func.count(literal("x"))).select_from(users)
+    with pytest.raises(exc.CompileError, match="expression arguments"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
 def test_compiler_visit_label_and_group_by_paths(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()

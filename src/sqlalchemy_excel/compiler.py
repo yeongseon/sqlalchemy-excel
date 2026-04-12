@@ -22,6 +22,7 @@ So we override the identifier preparer to never use table prefixes.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any, Literal
 
 from sqlalchemy import exc
@@ -79,11 +80,7 @@ class ExcelCompiler(compiler.SQLCompiler):
                 f"Excel dialect does not support expression arguments in {function_name}()"
             )
 
-        upper_inner = inner.upper()
-        if inner != "*" and (
-            "DISTINCT" in upper_inner
-            or any(op in inner for op in ("+", "-", "/", "*", "(", ")", ","))
-        ):
+        if inner != "*" and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", inner):
             raise exc.CompileError(
                 f"Excel dialect does not support expression arguments in {function_name}()"
             )
