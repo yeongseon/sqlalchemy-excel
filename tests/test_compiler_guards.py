@@ -60,7 +60,7 @@ def test_compiler_join_guard(tmp_xlsx: str) -> None:
     engine.dispose()
 
 
-def test_compiler_cte_subquery_returning_for_update_guards(tmp_xlsx: str) -> None:
+def test_compiler_cte_returning_for_update_guards(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, _ = _build_tables(metadata)
@@ -68,9 +68,6 @@ def test_compiler_cte_subquery_returning_for_update_guards(tmp_xlsx: str) -> Non
     with pytest.raises(exc.CompileError, match="CTE"):
         cte = select(users.c.id).cte("user_ids")
         select(cte.c.id).compile(dialect=engine.dialect)
-    with pytest.raises(exc.CompileError, match="subqueries"):
-        subq = select(users.c.id).subquery()
-        select(subq.c.id).compile(dialect=engine.dialect)
     with pytest.raises(exc.CompileError, match="RETURNING"):
         insert(users).values(id=1, name="Alice").returning(users.c.id).compile(
             dialect=engine.dialect

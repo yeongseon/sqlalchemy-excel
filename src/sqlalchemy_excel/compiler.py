@@ -11,7 +11,10 @@ Supported:
     DELETE FROM table [WHERE ...]
 
     Rejected (raises CompileError):
-    CTEs, UNION/INTERSECT/EXCEPT, window functions, RETURNING, JOIN, subqueries, FOR UPDATE
+    CTEs, UNION/INTERSECT/EXCEPT, window functions, RETURNING, JOIN, FOR UPDATE
+
+    Partially supported:
+    non-correlated subqueries in WHERE ... IN (SELECT single_col FROM table [WHERE ...])
 
 excel-dbapi's parser uses unquoted, unprefixed column names:
     SELECT id, name FROM users          (correct)
@@ -23,13 +26,13 @@ So we override the identifier preparer to never use table prefixes.
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from sqlalchemy import exc
 from sqlalchemy.sql import compiler, elements
 
 if TYPE_CHECKING:
-    from collections.abc import MutableMapping
+    from collections.abc import Callable, MutableMapping
 
 
 _SUPPORTED_FUNCTIONS = {"count", "sum", "avg", "min", "max"}
@@ -225,7 +228,8 @@ class ExcelCompiler(compiler.SQLCompiler):
         raise exc.CompileError("Excel dialect does not support CTEs")
 
     def visit_subquery(self, subquery: Any, **kw: Any) -> str:
-        raise exc.CompileError("Excel dialect does not support subqueries")
+        visit_subquery = cast("Callable[..., str]", super().visit_subquery)
+        return str(visit_subquery(subquery, **kw))
 
     def returning_clause(
         self,

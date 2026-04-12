@@ -112,6 +112,15 @@ class TestSelectCompilation:
         assert "LIMIT" in sql
         assert "OFFSET" in sql
 
+    def test_select_where_in_subquery(self, excel_engine, users_table, orders_table):
+        stmt = select(users_table).where(
+            users_table.c.id.in_(select(orders_table.c.user_id))
+        )
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "SELECT" in sql
+        assert "IN" in sql
+
 
 class TestCompilationRejection:
     """Test that unsupported features raise CompileError."""
