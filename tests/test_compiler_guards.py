@@ -1356,12 +1356,12 @@ def test_has_top_level_limit_offset_identifier_boundary() -> None:
 
 
 def test_compound_mixed_operators_flat(tmp_xlsx: str) -> None:
-    """Mixed compound operators (union + intersect) produce flat SQL.
+    """Mixed compound operators with grouping raise CompileError.
 
-    SQLAlchemy flattens nested compound expressions like
-    ``union(a, intersect(b, c))`` into ``A UNION B INTERSECT C``.
-    This is correct per SQL standard: set operations have no
-    precedence and are evaluated left-to-right.
+    SQLAlchemy wraps nested compound expressions like
+    ``union(a, intersect(b, c))`` with parentheses, producing
+    ``A UNION (B INTERSECT C)``.  The Excel dialect rejects grouped
+    compounds because the flat DBAPI parser cannot handle them.
     """
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
@@ -1372,14 +1372,8 @@ def test_compound_mixed_operators_flat(tmp_xlsx: str) -> None:
     c = select(users.c.id).where(users.c.id > 3)
 
     stmt = sa.union(a, sa.intersect(b, c))
-    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
-    # Flat chain with no nested parens around the INTERSECT branches.
-    assert "UNION" in sql
-    assert "INTERSECT" in sql
-    # Must NOT start with '(' — branches are unwrapped.
-    assert not sql.startswith("(")
-    # No nested compound parens: '(SELECT ... INTERSECT SELECT ...)' must not appear.
-    assert "(SELECT" not in sql
+    with pytest.raises(exc.CompileError, match="grouped/nested compound"):
+        str(stmt.compile(dialect=engine.dialect))
 
     engine.dispose()
 
@@ -1403,3 +1397,88 @@ def test_strip_compound_branch_parens_mixed_operators_unit() -> None:
         "EXCEPT SELECT id FROM t3"
     )
     assert ExcelCompiler._strip_compound_branch_parens(sql2) == sql2
+
+
+def test_strip_compound_branch_parens_grouped_raises() -> None:
+    """Grouped compound branch raises CompileError."""
+    from sqlalchemy_excel.compiler import ExcelCompiler
+
+    grouped = (
+        "SELECT id FROM t1 "
+        "UNION (SELECT id FROM t2 INTERSECT SELECT id FROM t3)"
+    )
+    with pytest.raises(exc.CompileError, match="grouped/nested compound"):
+        ExcelCompiler._strip_compound_branch_parens(grouped)
+
+
+def test_strip_compound_branch_parens_grouped_compound_raises() -> None:
+    """Grouped compound branch raises CompileError."""
+    from sqlalchemy_excel.compiler import ExcelCompiler
+
+    grouped = (
+        "SELECT id FROM t1 "
+        "UNION (SELECT id FROM t2 INTERSECT SELECT id FROM t3)"
+    )
+    with pytest.raises(exc.CompileError, match="grouped/nested compound"):
+        ExcelCompiler._strip_compound_branch_parens(grouped)
+
+
+def test_strip_compound_branch_parens_quoted_paren() -> None:
+    """Quoted parentheses inside compound branches are not corrupted."""
+    from sqlalchemy_excel.compiler import ExcelCompiler
+
+    # A branch containing a literal ')' in a string value.
+    sql = "(SELECT ')' AS x FROM t1) UNION (SELECT ')' AS x FROM t2)"
+    result = ExcelCompiler._strip_compound_branch_parens(sql)
+    # Parens stripped, but inner quotes preserved.
+    assert "SELECT ')' AS x FROM t1" in result
+    assert "SELECT ')' AS x FROM t2" in result
+    assert result.count("UNION") == 1
+
+
+def test_strip_compound_branch_parens_quoted_order_by() -> None:
+    """ORDER BY inside a quoted string is not misdetected."""
+    from sqlalchemy_excel.compiler import ExcelCompiler
+
+    # The string 'ORDER BY x' is a literal value, not a clause.
+    sql = (
+        "(SELECT 'ORDER BY x' AS label FROM t1) "
+        "UNION "
+        "(SELECT 'ORDER BY x' AS label FROM t2)"
+    )
+    result = ExcelCompiler._strip_compound_branch_parens(sql)
+    # The literal string 'ORDER BY x' must be preserved in both branches.
+    assert result.count("'ORDER BY x'") == 2
+
+
+def test_has_top_level_compound_op_quoted_union() -> None:
+    """UNION inside a quoted string is not detected as a compound op."""
+    from sqlalchemy_excel.compiler import ExcelCompiler
+
+    sql = "SELECT 'UNION' AS op FROM t1"
+    assert ExcelCompiler._has_top_level_compound_op(sql) is False
+
+
+def test_is_pos_in_quotes_basic() -> None:
+    """Basic position-in-quotes detection."""
+    from sqlalchemy_excel.compiler import ExcelCompiler
+
+    sql = "SELECT 'hello' FROM t1"
+    # Position of 'h' in 'hello' -- inside quotes.
+    h_pos = sql.index("h", sql.index("'"))
+    assert ExcelCompiler._is_pos_in_quotes(sql, h_pos) is True
+    # Position of 'S' in SELECT -- outside quotes.
+    assert ExcelCompiler._is_pos_in_quotes(sql, 0) is False
+
+
+def test_is_pos_in_quotes_escaped_quote() -> None:
+    """Escaped quotes (doubled) are handled correctly."""
+    from sqlalchemy_excel.compiler import ExcelCompiler
+
+    sql = "SELECT 'it''s' FROM t1"
+    # Position of 's' after the escaped quote -- still inside.
+    s_pos = sql.index("s", sql.index("''") + 2)
+    assert ExcelCompiler._is_pos_in_quotes(sql, s_pos) is True
+    # 'F' in FROM is outside quotes.
+    f_pos = sql.index("FROM")
+    assert ExcelCompiler._is_pos_in_quotes(sql, f_pos) is False

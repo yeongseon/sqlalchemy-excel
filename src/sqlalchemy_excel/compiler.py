@@ -586,6 +586,99 @@ class ExcelCompiler(compiler.SQLCompiler):
         return sql
 
     @staticmethod
+    def _update_depth_quote_aware(
+        sql: str, start: int, end: int, depth: int
+    ) -> int:
+        """Update paren depth between *start* and *end*, skipping quoted strings."""
+        in_quote = False
+        quote_char = ""
+        i = start
+        while i < end:
+            ch = sql[i]
+            if in_quote:
+                if ch == quote_char:
+                    if i + 1 < end and sql[i + 1] == quote_char:
+                        i += 2
+                        continue
+                    in_quote = False
+            else:
+                if ch in ("'", '"'):
+                    in_quote = True
+                    quote_char = ch
+                elif ch == "(":
+                    depth += 1
+                elif ch == ")":
+                    depth -= 1
+            i += 1
+        return depth
+
+    @staticmethod
+    def _is_pos_in_quotes(sql: str, pos: int) -> bool:
+        """Return True if *pos* is inside a quoted string literal."""
+        in_quote = False
+        quote_char = ""
+        i = 0
+        while i < pos:
+            ch = sql[i]
+            if in_quote:
+                if ch == quote_char:
+                    if i + 1 < len(sql) and sql[i + 1] == quote_char:
+                        i += 2
+                        continue
+                    in_quote = False
+            else:
+                if ch in ("'", '"'):
+                    in_quote = True
+                    quote_char = ch
+            i += 1
+        return in_quote
+
+    @staticmethod
+    def _has_top_level_compound_op(sql: str) -> bool:
+        """Return True if *sql* has a top-level UNION/INTERSECT/EXCEPT."""
+        upper = sql.upper()
+        depth = 0
+        in_quote = False
+        quote_char = ""
+        i = 0
+        length = len(sql)
+        while i < length:
+            ch = sql[i]
+            if in_quote:
+                if ch == quote_char:
+                    if i + 1 < length and sql[i + 1] == quote_char:
+                        i += 2
+                        continue
+                    in_quote = False
+                i += 1
+                continue
+            if ch in ("'", '"'):
+                in_quote = True
+                quote_char = ch
+                i += 1
+                continue
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            elif depth == 0:
+                for kw in ("UNION", "INTERSECT", "EXCEPT"):
+                    kw_len = len(kw)
+                    if upper[i : i + kw_len] == kw:
+                        before_ok = i == 0 or not (
+                            upper[i - 1].isalnum() or upper[i - 1] == "_"
+                        )
+                        after_pos = i + kw_len
+                        after_ok = after_pos >= length or not (
+                            upper[after_pos].isalnum()
+                            or upper[after_pos] == "_"
+                        )
+                        if before_ok and after_ok:
+                            return True
+            i += 1
+        return False
+
+    @staticmethod
     def _strip_compound_branch_parens(sql: str) -> str:
         """Strip outermost balanced parens that wrap compound branches.
 
@@ -598,10 +691,13 @@ class ExcelCompiler(compiler.SQLCompiler):
         Branch-local ``ORDER BY`` is stripped in a parenthesis-aware way
         so that ``ORDER BY`` inside nested subqueries (e.g.
         ``IN (SELECT ... ORDER BY ...)``) is preserved.
+
+        Raises ``exc.CompileError`` if a branch contains a nested compound
+        operator (e.g. ``(SELECT ... UNION SELECT ...)``), which the
+        excel-dbapi parser cannot handle.
         """
         import re
 
-        # Regex to detect compound keyword or start-of-string before '('.
         _BRANCH_POS_RE = re.compile(
             r"(?:^|(?:UNION|INTERSECT|EXCEPT|ALL))\s*$",
             re.IGNORECASE,
@@ -612,22 +708,47 @@ class ExcelCompiler(compiler.SQLCompiler):
         length = len(sql)
 
         while i < length:
+            # Skip characters inside string literals at the top level.
+            if sql[i] in ("'", '"'):
+                quote_char = sql[i]
+                j = i + 1
+                while j < length:
+                    if sql[j] == quote_char:
+                        if j + 1 < length and sql[j + 1] == quote_char:
+                            j += 2
+                            continue
+                        j += 1
+                        break
+                    j += 1
+                result.append(sql[i:j])
+                i = j
+                continue
+
             if sql[i] == "(":
-                # Find matching ')' using balanced counting.
+                # Find matching ')' using balanced counting, quote-aware.
                 depth = 1
+                in_quote = False
+                qc = ""
                 j = i + 1
                 while j < length and depth > 0:
-                    if sql[j] == "(":
-                        depth += 1
-                    elif sql[j] == ")":
-                        depth -= 1
+                    ch = sql[j]
+                    if in_quote:
+                        if ch == qc:
+                            if j + 1 < length and sql[j + 1] == qc:
+                                j += 2
+                                continue
+                            in_quote = False
+                    else:
+                        if ch in ("'", '"'):
+                            in_quote = True
+                            qc = ch
+                        elif ch == "(":
+                            depth += 1
+                        elif ch == ")":
+                            depth -= 1
                     j += 1
-                # j is one past the matching ')'.
                 inner = sql[i + 1 : j - 1].strip()
 
-                # Only strip if (a) content starts with SELECT AND
-                # (b) the '(' is at a compound-branch position (start
-                # of string or after UNION/INTERSECT/EXCEPT/ALL).
                 prefix = "".join(result).rstrip()
                 is_branch = (
                     inner.upper().startswith("SELECT")
@@ -635,24 +756,23 @@ class ExcelCompiler(compiler.SQLCompiler):
                 )
 
                 if is_branch:
-                    # If the branch has LIMIT/OFFSET, the parser
-                    # can handle the full form inside parens
-                    # (ORDER BY + LIMIT/OFFSET), so keep parens
-                    # intact to preserve both ordering and limiting
-                    # semantics.
+                    # Reject grouped/nested compounds.
+                    if ExcelCompiler._has_top_level_compound_op(inner):
+                        raise exc.CompileError(
+                            "Excel dialect does not support "
+                            "grouped/nested compound queries. "
+                            "Use flat chaining instead: "
+                            "union(a, b).intersect(c) rather "
+                            "than union(a, intersect(b, c))."
+                        )
                     if ExcelCompiler._has_top_level_limit_offset(inner):
                         result.append("(" + inner + ")")
                     else:
-                        # No LIMIT/OFFSET — strip branch-local
-                        # ORDER BY (which is semantically meaningless
-                        # in compound queries without LIMIT) and
-                        # remove the wrapper parens.
                         inner = ExcelCompiler._strip_top_level_order_by(
                             inner
                         )
                         result.append(inner)
                 else:
-                    # Not a branch wrapper — preserve as-is.
                     result.append(sql[i:j])
                 i = j
             else:
@@ -665,35 +785,31 @@ class ExcelCompiler(compiler.SQLCompiler):
     def _strip_top_level_order_by(sql: str) -> str:
         """Remove the last top-level ORDER BY from *sql*.
 
-        Walks the string tracking parenthesis depth.  Only an ``ORDER BY``
-        token found at depth 0 is treated as branch-local and stripped.
-        Any subsequent ``LIMIT`` or ``OFFSET`` at depth 0 is preserved so
-        that ``ORDER BY x LIMIT n`` becomes ``LIMIT n``.
-        An ``ORDER BY`` inside any parenthesized group (e.g. a subquery)
-        is left untouched.
+        Walks the string tracking parenthesis depth (quote-aware).  Only
+        an ``ORDER BY`` token found at depth 0, outside string literals,
+        is treated as branch-local and stripped.  Any subsequent ``LIMIT``
+        or ``OFFSET`` at depth 0 is preserved so that
+        ``ORDER BY x LIMIT n`` becomes ``LIMIT n``.
         """
         upper = sql.upper()
         depth = 0
         last_top_order: int | None = None
         search_start = 0
-        # Scan for top-level ORDER BY positions (paren depth == 0).
         while True:
             pos = upper.find("ORDER", search_start)
             if pos == -1:
                 break
-            # Update paren depth up to this position.
-            for k in range(search_start, pos):
-                if sql[k] == "(":
-                    depth += 1
-                elif sql[k] == ")":
-                    depth -= 1
+            # Skip if inside a quoted string.
+            if ExcelCompiler._is_pos_in_quotes(sql, pos):
+                search_start = pos + 5
+                continue
+            depth = ExcelCompiler._update_depth_quote_aware(
+                sql, search_start, pos, depth
+            )
             if depth == 0:
-                # Verify it's ORDER BY (not part of an identifier).
                 after_order = pos + 5
                 rest = upper[after_order:].lstrip()
                 if rest.startswith("BY"):
-                    # Verify BY is a complete token (not part of
-                    # an identifier like orderby_col).
                     if len(rest) <= 2 or not (rest[2].isalnum() or rest[2] == "_"):
                         if pos == 0 or not (upper[pos - 1].isalnum() or upper[pos - 1] == "_"):
                             last_top_order = pos
@@ -701,11 +817,7 @@ class ExcelCompiler(compiler.SQLCompiler):
         if last_top_order is None:
             return sql
 
-        # Find where the ORDER BY clause ends: at the next top-level
-        # LIMIT or OFFSET keyword, or at end-of-string.
         order_end = len(sql)
-        od = 0  # paren depth from last_top_order onward
-        scan = last_top_order
         for keyword in ("LIMIT", "OFFSET"):
             od = 0
             scan2 = last_top_order
@@ -713,17 +825,21 @@ class ExcelCompiler(compiler.SQLCompiler):
                 kp = upper.find(keyword, scan2)
                 if kp == -1:
                     break
-                # Update paren depth up to this position.
-                for k2 in range(scan2, kp):
-                    if sql[k2] == "(":
-                        od += 1
-                    elif sql[k2] == ")":
-                        od -= 1
+                if ExcelCompiler._is_pos_in_quotes(sql, kp):
+                    scan2 = kp + len(keyword)
+                    continue
+                od = ExcelCompiler._update_depth_quote_aware(
+                    sql, scan2, kp, od
+                )
                 if od == 0:
-                    # Verify it's not part of an identifier.
-                    if kp == 0 or not (upper[kp - 1].isalnum() or upper[kp - 1] == "_"):
+                    if kp == 0 or not (
+                        upper[kp - 1].isalnum() or upper[kp - 1] == "_"
+                    ):
                         after_kw = kp + len(keyword)
-                        if after_kw >= len(upper) or not (upper[after_kw].isalnum() or upper[after_kw] == "_"):
+                        if after_kw >= len(upper) or not (
+                            upper[after_kw].isalnum()
+                            or upper[after_kw] == "_"
+                        ):
                             if kp < order_end:
                                 order_end = kp
                             break
@@ -746,20 +862,24 @@ class ExcelCompiler(compiler.SQLCompiler):
                 kp = upper.find(keyword, scan)
                 if kp == -1:
                     break
-                for k in range(scan, kp):
-                    if sql[k] == "(":
-                        depth += 1
-                    elif sql[k] == ")":
-                        depth -= 1
+                if ExcelCompiler._is_pos_in_quotes(sql, kp):
+                    scan = kp + len(keyword)
+                    continue
+                depth = ExcelCompiler._update_depth_quote_aware(
+                    sql, scan, kp, depth
+                )
                 if depth == 0:
-                    # Not part of an identifier.
-                    if kp == 0 or not (upper[kp - 1].isalnum() or upper[kp - 1] == "_"):
+                    if kp == 0 or not (
+                        upper[kp - 1].isalnum() or upper[kp - 1] == "_"
+                    ):
                         after_kw = kp + len(keyword)
-                        if after_kw >= len(upper) or not (upper[after_kw].isalnum() or upper[after_kw] == "_"):
+                        if after_kw >= len(upper) or not (
+                            upper[after_kw].isalnum()
+                            or upper[after_kw] == "_"
+                        ):
                             return True
                 scan = kp + len(keyword)
         return False
-
     def visit_over(
         self,
         over: Any,
