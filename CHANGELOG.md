@@ -1,156 +1,30 @@
 # Changelog
 
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
 ## [0.5.4] - 2026-04-13
 
 ### Added
-- End-to-end support for CASE WHEN expressions in SELECT and UPDATE
-- 9 new E2E tests covering searched CASE, no-ELSE, multiple conditions,
-  aliases, UPDATE SET with CASE, multiple CASE columns, numeric results,
-  ORDER BY, and WHERE with CASE
+- ALTER TABLE support (`ADD COLUMN`, `DROP COLUMN`, `RENAME COLUMN`) with metadata synchronization.
+- UPSERT support via `INSERT ... ON CONFLICT DO NOTHING/DO UPDATE` with conflict target validation.
+- Graph dialect support (`excel+graph:///drive_id/item_id`) for Microsoft Graph-backed workbooks.
+- Compiler guards and expanded SQL support coverage across JOIN, compound queries, subqueries, aggregates, and CASE expressions.
+- CI matrix coverage for Python 3.10-3.13 with strict type checking and high test coverage.
 
-
-## [0.5.3] - 2026-04-13
-
-### Added
-- Compiler support for GROUP BY, HAVING, and aggregates with JOIN queries
-- End-to-end test for explicit SQLAlchemy aliases with GROUP BY + JOIN
-- Compiler support for subqueries in UPDATE/DELETE WHERE clauses
-- End-to-end tests for UPDATE/DELETE with IN/NOT IN subqueries
 ### Changed
-- Removed GROUP BY + JOIN, HAVING + JOIN, and aggregate + JOIN compiler guards
-- Removed UpdateBase subquery rejection guards in visit_subquery and visit_grouping
+- Compiler behavior now normalizes SQL execution text consistently before dispatch (`do_execute` / `do_execute_no_params`).
+- Dependency baseline raised to `excel-dbapi>=0.4.1,<1.0` (and `excel-dbapi[graph]>=0.4.1,<1.0` for Graph extras).
+- Documentation and development workflows were aligned for cross-repo delivery (dialect + driver) and repeatable releases.
 
 ### Fixed
-- Aliased JOIN with table-qualified column refs in GROUP BY/aggregate context
+- Graph optional dependency handling in tests and CI (graceful skip when extras are unavailable).
+- JOIN/tree validation edge cases and aggregate/alias compilation edge behavior.
+- Strict typing compatibility for SQLAlchemy override signatures and dialect internals.
 
-
-## [0.5.2] - 2026-04-13
-
-### Added
-- Compiler support for UNION, UNION ALL, INTERSECT, EXCEPT set operations
-- Compiler and end-to-end tests for all compound query types
-
-### Changed
-- `visit_compound_select()` now delegates to base SQLAlchemy compiler instead of rejecting
-
-## [0.5.1] - 2026-04-13
-
-### Added
-- Compiler support for chained (multi-table) JOIN trees with recursive validation
-- Compiler and end-to-end tests for chained INNER/LEFT JOIN compilation and execution
-- Compiler and end-to-end tests for RIGHT JOIN shape compilation (`join(..., isouter=True)` with swapped sides)
-
-### Changed
-- `_validate_join_tree()` now validates JOIN subtrees recursively instead of rejecting chained JOINs
-- JOIN ON-clause cross-source validation now resolves tables across each JOIN side, including nested JOIN nodes
-- GROUP BY + JOIN, HAVING + JOIN, and aggregate + JOIN are now allowed by the compiler (DISTINCT + JOIN guard remains)
-
-## [0.5.0] - 2026-04-13
-
-### Added
-- JOIN support: INNER JOIN and LEFT JOIN compile to valid SQL for excel-dbapi
-- Compiler auto-detects JOIN context and emits table-qualified column names
-- E2E tests: inner join, left join with NULL fill
-- Compiler guard tests for JOIN compilation
-- Direct `visit_subquery` guard tests for improved coverage
-- `supports_multivalues_insert = True` dialect flag for multi-row INSERT support
-- `visit_insert()` compiler override for `from_select()` (INSERT...SELECT) compilation
-
-### Changed
-- `visit_join()`: removed CompileError guard, delegates to base SQLAlchemy compiler
-- `visit_column()`: conditionally includes table prefix based on JOIN context
-- `_setup_select_stack()`: detects JOIN in FROM clause before column compilation
-- `visit_function()`: regex updated to allow qualified column names (e.g., `a.id`)
-- excel-dbapi dependency updated to >=0.4.0
-- Test count: 152 → 155, coverage: 94% → 98%
-- Version bumped to 0.5.0
-
-## [0.4.0] - 2026-04-12
-
-### Added
-- HAVING guard via `_compose_select_body` override (previously `having_clause` was never called by SQLAlchemy)
-- End-to-end tests: CRUD round-trip, ORM Session, inspector reflection, DDL lifecycle, rollback no-op
-- Compiler guard tests for all unsupported SQL features
-- Type compiler full coverage tests
-- Reflection edge case tests
-
-### Changed
-- README restructured: limitations-first layout, Graph API moved to experimental section
-- Test coverage: 80% → 98% (117 tests)
-
-## [0.3.2] - 2026-04-12
-
-### Fixed
-- Install `graph` extras in CI to resolve `httpx` ModuleNotFoundError
-- Use `pytest.importorskip("httpx")` in Graph dialect tests for graceful skip when extras not installed
-
-## [0.3.1] - 2026-04-12
-
-### Fixed
-- Add explicit `supports_statement_cache = False` to `ExcelGraphDialect` to suppress SQLAlchemy caching warning
-- Fix import ordering in test_graph_dialect.py for ruff I001 compliance
-
-## [0.3.0] - 2026-04-12
-
-### Added
-- `ExcelGraphDialect` for remote Excel files via Microsoft Graph API
-- `excel+graph:///drive_id/item_id` URL scheme support
-- Entry point `excel.graph` for SQLAlchemy dialect resolution
-- Optional dependency: `pip install sqlalchemy-excel[graph]`
-- URL percent-decoding for drive/item IDs with special characters
-- `readonly` query parameter forwarding to Graph backend
-- Comprehensive Graph dialect tests with `httpx.MockTransport`
-- `docs/` directory with USAGE.md, DEVELOPMENT.md, and ROADMAP.md
-
-### Changed
-- Version bumped to 0.3.0
-
-## [0.2.2] - 2026-04-12
-
-### Fixed
-- Restored cast() calls needed for CI mypy and suppress redundant-cast locally
-- Version bumped to 0.2.2
-
-## [0.2.1] - 2026-04-12
-
-### Added
-- Project logo (modern minimalist SVG)
-- Contributing guide, Code of Conduct, Security and Support policies
-- Development tooling: Makefile, .editorconfig, pre-commit-config, codecov.yml, git-cliff config
-- GitHub issue/PR templates and project management files
-- py.typed marker for PEP 561 compliance
-- twine check step in publish workflow
-
-### Changed
-- Classifier updated from Alpha to Beta
-- Changelog URL added to project metadata
-
-### Fixed
-- Oracle review findings: rollback docs, absolute logo URLs, metadata alignment
-
-## [0.2.0] - 2026-04-12
-
-### Added
-- Full dialect rewrite: ExcelCompiler, ExcelDDLCompiler, ExcelTypeCompiler, ExcelInspectionMixin
-- Comprehensive README with ORM examples, type mapping table, schema inspection docs
-- Test coverage reporting with Codecov CI integration
-- IN, BETWEEN, LIKE operator tests for SQLAlchemy dialect
-
-### Changed
-- excel-dbapi dependency updated to >=0.2.0
-- Version bumped to 0.2.0
-
-### Fixed
-- mypy strict incompatibility with SQLAlchemy dialect overrides (temporarily disabled then re-enabled)
-
-## [0.1.0] - 2026-04-12
-
-- Initial release
-- SQLAlchemy 2.0 dialect for Excel files
-- PEP 249 DB-API 2.0 driver via excel-dbapi
-- SQL support: SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, DROP TABLE
-- WHERE clause with AND/OR, comparison operators, IS NULL, IS NOT NULL
-- ORDER BY, LIMIT
-- Type mapping: TEXT, INTEGER, FLOAT, BOOLEAN, DATE, DATETIME
-- Reflection: get_table_names, get_columns, get_pk_constraint, has_table
-- ORM support with DeclarativeBase
+[Unreleased]: https://github.com/yeongseon/sqlalchemy-excel/compare/v0.5.4...HEAD
+[0.5.4]: https://github.com/yeongseon/sqlalchemy-excel/releases/tag/v0.5.4
