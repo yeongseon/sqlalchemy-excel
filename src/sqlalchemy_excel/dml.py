@@ -69,6 +69,16 @@ class Insert(StandardInsert):
         where: _OnConflictWhereT = None,
     ) -> Self:
         """Specifies a DO UPDATE SET action for ON CONFLICT clause."""
+        if not index_elements:
+            raise ValueError(
+                "Excel dialect requires index_elements for ON CONFLICT clause"
+            )
+        if index_where is not None:
+            raise ValueError("Excel dialect does not support index_where in ON CONFLICT")
+        if where is not None:
+            raise ValueError(
+                "Excel dialect does not support WHERE clause in ON CONFLICT DO UPDATE"
+            )
         self._post_values_clause = OnConflictDoUpdate(
             index_elements, index_where, set_, where
         )
@@ -82,6 +92,12 @@ class Insert(StandardInsert):
         index_where: _OnConflictIndexWhereT = None,
     ) -> Self:
         """Specifies a DO NOTHING action for ON CONFLICT clause."""
+        if not index_elements:
+            raise ValueError(
+                "Excel dialect requires index_elements for ON CONFLICT clause"
+            )
+        if index_where is not None:
+            raise ValueError("Excel dialect does not support index_where in ON CONFLICT")
         self._post_values_clause = OnConflictDoNothing(index_elements, index_where)
         return self
 
@@ -135,7 +151,7 @@ class OnConflictDoUpdate(OnConflictClause):
                 raise ValueError("set parameter dictionary must not be empty")
             set_dict = set_
         elif isinstance(set_, ColumnCollection):
-            set_dict = cast(_OnConflictSetDictT, dict(set_))
+            set_dict = {column: column for column in set_}
             if not set_dict:
                 raise ValueError("set parameter dictionary must not be empty")
         else:

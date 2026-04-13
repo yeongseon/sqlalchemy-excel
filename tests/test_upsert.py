@@ -124,6 +124,35 @@ class TestUpsertDoUpdate:
             rows = conn.execute(select(items_table).order_by(items_table.c.id)).all()
             assert rows == [(1, "Renamed", 30, "A")]
 
+    def test_expression_set_value(self, populated_engine, items_table):
+        with populated_engine.begin() as conn:
+            conn.execute(insert(items_table).values(id=1, name="Alice", age=30, code="A"))
+
+        stmt = insert(items_table).values(id=1, name="New", age=99, code="B")
+        upsert_stmt = stmt.on_conflict_do_update(
+            index_elements=["id"],
+            set_={"age": items_table.c.age + 1},
+        )
+        compiled = " ".join(str(upsert_stmt.compile(dialect=populated_engine.dialect)).split())
+        assert "items.age" not in compiled
+        assert " SET age = (age + " in compiled
+
+        with populated_engine.begin() as conn:
+            conn.execute(upsert_stmt)
+
+        with populated_engine.connect() as conn:
+            rows = conn.execute(select(items_table).order_by(items_table.c.id)).all()
+            assert rows == [(1, "Alice", 31, "A")]
+
+    def test_set_with_table_columns(self, populated_engine, items_table):
+        upsert_stmt = insert(items_table).on_conflict_do_update(
+            index_elements=["id"],
+            set_=items_table.c,
+        )
+        compiled = " ".join(str(upsert_stmt.compile(dialect=populated_engine.dialect)).split())
+        assert "items." not in compiled
+        assert " SET id = id, name = name, age = age, code = code" in compiled
+
     def test_multi_column_conflict_target(self, populated_engine, composite_items_table):
         with populated_engine.begin() as conn:
             conn.execute(
@@ -192,3 +221,38 @@ def test_double_on_conflict_raises(items_table):
 
     with pytest.raises(InvalidRequestError, match="already has an ON CONFLICT clause"):
         stmt.on_conflict_do_update(index_elements=["id"], set_={"age": 40})
+
+
+def test_where_rejected(items_table):
+    stmt = insert(items_table).values(id=1, name="Alice", age=30, code="A")
+
+    with pytest.raises(ValueError, match="does not support WHERE clause"):
+        stmt.on_conflict_do_update(
+            index_elements=["id"],
+            set_={"age": 1},
+            where=items_table.c.age > 10,
+        )
+
+
+def test_index_where_rejected(items_table):
+    stmt = insert(items_table).values(id=1, name="Alice", age=30, code="A")
+
+    with pytest.raises(ValueError, match="does not support index_where"):
+        stmt.on_conflict_do_nothing(
+            index_elements=["id"],
+            index_where=items_table.c.id > 0,
+        )
+
+
+def test_missing_index_elements_do_nothing(items_table):
+    stmt = insert(items_table).values(id=1, name="Alice", age=30, code="A")
+
+    with pytest.raises(ValueError, match="requires index_elements"):
+        stmt.on_conflict_do_nothing()
+
+
+def test_missing_index_elements_do_update(items_table):
+    stmt = insert(items_table).values(id=1, name="Alice", age=30, code="A")
+
+    with pytest.raises(ValueError, match="requires index_elements"):
+        stmt.on_conflict_do_update(set_={"age": 1})

@@ -280,15 +280,15 @@ class ExcelCompiler(compiler.SQLCompiler):
         ambiguous_table_name_map: MutableMapping[str, str] | None = None,
         **kwargs: Any,
     ) -> str:
-        """Override to conditionally include table prefix in column references.
-
-        For single-table queries: SELECT id, name FROM users
-        For JOIN queries: SELECT users.id, orders.amount FROM users JOIN orders ...
-        """
+        if kwargs.get("is_upsert_set"):
+            table_name = getattr(getattr(column, "table", None), "name", None)
+            use_table = table_name == "excluded"
+        else:
+            use_table = self._has_join
         return super().visit_column(
             column,
             add_to_result_map=add_to_result_map,
-            include_table=self._has_join,
+            include_table=use_table,
             result_map_targets=result_map_targets,
             ambiguous_table_name_map=ambiguous_table_name_map,
             **kwargs,
@@ -910,17 +910,6 @@ class ExcelCompiler(compiler.SQLCompiler):
                 )
                 for c in clause.inferred_target_elements
             )
-            if clause.inferred_target_whereclause is not None:
-                whereclause_kw = dict(kw)
-                whereclause_kw.update(
-                    include_table=False,
-                    use_schema=False,
-                    literal_execute=True,
-                )
-                target_text += " WHERE %s" % self.process(
-                    clause.inferred_target_whereclause,
-                    **whereclause_kw,
-                )
         else:
             target_text = ""
 
@@ -943,81 +932,69 @@ class ExcelCompiler(compiler.SQLCompiler):
 
         set_parameters = dict(clause.update_values_to_set)
 
-        original_has_join = self._has_join
-        self._has_join = True
-        try:
-            insert_statement = cast(Any, self.stack[-1]["selectable"])
-            cols = insert_statement.table.c
-            set_kw = dict(kw)
-            set_kw.update(use_schema=False)
-            for c in cols:
-                col_key = c.key
+        insert_statement = cast(Any, self.stack[-1]["selectable"])
+        cols = insert_statement.table.c
+        set_kw = dict(kw)
+        set_kw.update(include_table=False, use_schema=False)
+        for c in cols:
+            col_key = c.key
 
-                if col_key in set_parameters:
-                    value = set_parameters.pop(col_key)
-                elif c in set_parameters:
-                    value = set_parameters.pop(c)
-                else:
-                    continue
+            if col_key in set_parameters:
+                value = set_parameters.pop(col_key)
+            elif c in set_parameters:
+                value = set_parameters.pop(c)
+            else:
+                continue
 
-                if coercions._is_literal(value):
-                    value = elements.BindParameter(None, value, type_=c.type)
+            if coercions._is_literal(value):
+                value = elements.BindParameter(None, value, type_=c.type)
 
-                else:
-                    if isinstance(value, elements.BindParameter) and value.type._isnull:
-                        value = value._clone()
-                        value.type = c.type
+            else:
+                if isinstance(value, elements.BindParameter) and value.type._isnull:
+                    value = value._clone()
+                    value.type = c.type
+            value_text = self.process(
+                value.self_group(),
+                is_upsert_set=True,
+                **set_kw,
+            )
+
+            key_text = self.preparer.quote(c.name)
+            action_set_ops.append("%s = %s" % (key_text, value_text))
+
+        if set_parameters:
+            from sqlalchemy import util as sa_util
+
+            table_name = getattr(
+                getattr(self.current_executable, "table", None),
+                "name",
+                "<unknown>",
+            )
+
+            sa_util.warn(
+                "Additional column names not matching "
+                "any column keys in table '%s': %s"
+                % (
+                    table_name,
+                    (", ".join("'%s'" % c for c in set_parameters)),
+                )
+            )
+            for k, v in set_parameters.items():
+                key_text = (
+                    self.preparer.quote(k)
+                    if isinstance(k, str)
+                    else self.process(k, **set_kw)
+                )
                 value_text = self.process(
-                    value.self_group(),
+                    coercions.expect(roles.ExpressionElementRole, v),
                     is_upsert_set=True,
                     **set_kw,
                 )
-
-                key_text = self.preparer.quote(c.name)
                 action_set_ops.append("%s = %s" % (key_text, value_text))
 
-            if set_parameters:
-                from sqlalchemy import util as sa_util
+        action_text = ", ".join(action_set_ops)
 
-                table_name = getattr(
-                    getattr(self.current_executable, "table", None),
-                    "name",
-                    "<unknown>",
-                )
-
-                sa_util.warn(
-                    "Additional column names not matching "
-                    "any column keys in table '%s': %s"
-                    % (
-                        table_name,
-                        (", ".join("'%s'" % c for c in set_parameters)),
-                    )
-                )
-                for k, v in set_parameters.items():
-                    key_text = (
-                        self.preparer.quote(k)
-                        if isinstance(k, str)
-                        else self.process(k, **set_kw)
-                    )
-                    value_text = self.process(
-                        coercions.expect(roles.ExpressionElementRole, v),
-                        is_upsert_set=True,
-                        **set_kw,
-                    )
-                    action_set_ops.append("%s = %s" % (key_text, value_text))
-
-            action_text = ", ".join(action_set_ops)
-            if clause.update_whereclause is not None:
-                where_kw = dict(kw)
-                where_kw.update(include_table=True, use_schema=False)
-                action_text += " WHERE %s" % self.process(
-                    clause.update_whereclause,
-                    **where_kw,
-                )
-
-            return "ON CONFLICT %s DO UPDATE SET %s" % (target_text, action_text)
-        finally:
-            self._has_join = original_has_join
+        return "ON CONFLICT %s DO UPDATE SET %s" % (target_text, action_text)
 
     def visit_over(
         self,
