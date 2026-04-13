@@ -122,6 +122,43 @@ class TestSelectCompilation:
         assert "IN" in sql
 
 
+class TestColumnAliasCompilation:
+    """Test column alias (AS) SQL compilation."""
+
+    def test_label_emits_as(self, excel_engine, users_table):
+        stmt = select(users_table.c.name.label("n"))
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert " AS " in sql
+        assert "n" in sql
+
+    def test_aggregate_label(self, excel_engine, users_table):
+        from sqlalchemy import func
+
+        stmt = select(func.count(users_table.c.id).label("total")).select_from(users_table)
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert " AS " in sql
+        assert "total" in sql
+
+    def test_join_label(self, excel_engine, users_table, orders_table):
+        stmt = select(
+            users_table.c.name.label("user_name"),
+            orders_table.c.amount.label("order_amount"),
+        ).join(orders_table, users_table.c.id == orders_table.c.user_id)
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "AS user_name" in sql
+        assert "AS order_amount" in sql
+
+    def test_mixed_label_and_bare(self, excel_engine, users_table):
+        stmt = select(users_table.c.name.label("n"), users_table.c.age)
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "AS n" in sql
+        assert "AS age" not in sql
+
+
 class TestCompilationRejection:
     """Test that unsupported features raise CompileError."""
 

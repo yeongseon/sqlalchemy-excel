@@ -351,7 +351,7 @@ def test_compiler_visit_label_and_group_by_paths(tmp_xlsx: str) -> None:
     label = users.c.id.label("identifier")
 
     compiled_stmt = select(label).compile(dialect=engine.dialect)
-    assert " AS " not in str(compiled_stmt)
+    assert " AS " in str(compiled_stmt)
 
     rendered = compiled_stmt.visit_label(label, render_label_as_label=label)
     assert rendered == "identifier"

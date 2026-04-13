@@ -278,12 +278,7 @@ class ExcelCompiler(compiler.SQLCompiler):
         result_map_targets: Any = (),
         **kw: Any,
     ) -> str:
-        """Override to never emit AS <label> in SELECT columns.
-
-        excel-dbapi's parser does not understand column aliases.
-        We still register the result map so SQLAlchemy can map
-        result columns back to ORM attributes by position.
-        """
+        """Emit AS <label> in SELECT columns for excel-dbapi alias support."""
         render_label_with_as = within_columns_clause and not within_label_clause
 
         if render_label_with_as:
@@ -301,7 +296,7 @@ class ExcelCompiler(compiler.SQLCompiler):
                     label.type,
                 )
 
-            # Emit the column WITHOUT "AS <label>"
+            # Emit the column WITH "AS <label>"
             return str(
                 label.element._compiler_dispatch(
                     self,
@@ -309,7 +304,7 @@ class ExcelCompiler(compiler.SQLCompiler):
                     within_label_clause=True,
                     **kw,
                 )
-            )
+            ) + " AS " + self.preparer.format_label(label, labelname)
 
         if render_label_as_label is label:
             if isinstance(label.name, elements._truncated_label):

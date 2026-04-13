@@ -422,6 +422,83 @@ def test_e2e_aggregate_sum_avg_min_max(tmp_path) -> None:
     engine.dispose()
 
 
+def test_e2e_column_alias(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+            ],
+        )
+
+    with engine.connect() as conn:
+        stmt = select(users.c.name.label("n"), users.c.age.label("a"))
+        result = conn.execute(stmt)
+        keys = list(result.keys())
+        assert "n" in keys
+        assert "a" in keys
+        rows = result.all()
+        assert len(rows) == 2
+
+    engine.dispose()
+
+
+def test_e2e_aggregate_alias(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+            ],
+        )
+
+    with engine.connect() as conn:
+        stmt = select(func.count(users.c.id).label("total")).select_from(users)
+        result = conn.execute(stmt)
+        row = result.one()
+        assert row[0] == 2
+
+    engine.dispose()
+
+
+def test_e2e_order_by_alias(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Charlie", "age": 30},
+                {"id": 2, "name": "Alice", "age": 25},
+                {"id": 3, "name": "Bob", "age": 35},
+            ],
+        )
+
+    with engine.connect() as conn:
+        label_col = users.c.name.label("n")
+        stmt = select(label_col).order_by(label_col)
+        result = conn.execute(stmt)
+        names = [row[0] for row in result]
+        assert names == ["Alice", "Bob", "Charlie"]
+
+    engine.dispose()
+
+
 def test_e2e_where_aggregate_rejected(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
