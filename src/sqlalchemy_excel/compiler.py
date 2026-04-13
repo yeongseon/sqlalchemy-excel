@@ -692,7 +692,7 @@ class ExcelCompiler(compiler.SQLCompiler):
                 after_order = pos + 5
                 rest = upper[after_order:].lstrip()
                 if rest.startswith("BY"):
-                    if pos == 0 or not upper[pos - 1].isalnum():
+                    if pos == 0 or not (upper[pos - 1].isalnum() or upper[pos - 1] == "_"):
                         last_top_order = pos
             search_start = pos + 5
         if last_top_order is None:
@@ -718,9 +718,9 @@ class ExcelCompiler(compiler.SQLCompiler):
                         od -= 1
                 if od == 0:
                     # Verify it's not part of an identifier.
-                    if kp == 0 or not upper[kp - 1].isalnum():
+                    if kp == 0 or not (upper[kp - 1].isalnum() or upper[kp - 1] == "_"):
                         after_kw = kp + len(keyword)
-                        if after_kw >= len(upper) or not upper[after_kw].isalnum():
+                        if after_kw >= len(upper) or not (upper[after_kw].isalnum() or upper[after_kw] == "_"):
                             if kp < order_end:
                                 order_end = kp
                             break
@@ -750,9 +750,9 @@ class ExcelCompiler(compiler.SQLCompiler):
                         depth -= 1
                 if depth == 0:
                     # Not part of an identifier.
-                    if kp == 0 or not upper[kp - 1].isalnum():
+                    if kp == 0 or not (upper[kp - 1].isalnum() or upper[kp - 1] == "_"):
                         after_kw = kp + len(keyword)
-                        if after_kw >= len(upper) or not upper[after_kw].isalnum():
+                        if after_kw >= len(upper) or not (upper[after_kw].isalnum() or upper[after_kw] == "_"):
                             return True
                 scan = kp + len(keyword)
         return False

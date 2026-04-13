@@ -1315,3 +1315,29 @@ def test_strip_top_level_order_by_preserves_limit() -> None:
         "SELECT id FROM t ORDER BY id DESC LIMIT ? OFFSET ?"
     )
     assert result == "SELECT id FROM t LIMIT ? OFFSET ?"
+
+
+def test_has_top_level_limit_offset_identifier_boundary() -> None:
+    """_has_top_level_limit_offset must not match identifiers containing LIMIT/OFFSET."""
+    from sqlalchemy_excel.compiler import ExcelCompiler
+
+    # Real LIMIT keyword.
+    assert ExcelCompiler._has_top_level_limit_offset("SELECT id FROM t LIMIT 5") is True
+    # Real OFFSET keyword.
+    assert ExcelCompiler._has_top_level_limit_offset("SELECT id FROM t OFFSET 2") is True
+    # Identifier containing LIMIT (e.g. limit_col).
+    assert ExcelCompiler._has_top_level_limit_offset(
+        "SELECT limit_col FROM t WHERE limit_value > 1"
+    ) is False
+    # Identifier containing OFFSET (e.g. offset_value).
+    assert ExcelCompiler._has_top_level_limit_offset(
+        "SELECT offset_value FROM t"
+    ) is False
+    # LIMIT inside parens (subquery) — not top-level.
+    assert ExcelCompiler._has_top_level_limit_offset(
+        "SELECT id FROM t WHERE id IN (SELECT id FROM t2 LIMIT 1)"
+    ) is False
+    # Mixed: identifier + real LIMIT.
+    assert ExcelCompiler._has_top_level_limit_offset(
+        "SELECT limit_col FROM t LIMIT 5"
+    ) is True
