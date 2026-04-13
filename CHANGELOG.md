@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.4] - 2026-04-13
+
+### Added
+- End-to-end support for CASE WHEN expressions in SELECT and UPDATE
+- 9 new E2E tests covering searched CASE, no-ELSE, multiple conditions,
+  aliases, UPDATE SET with CASE, multiple CASE columns, numeric results,
+  ORDER BY, and WHERE with CASE
+
+
 ## [0.5.3] - 2026-04-13
 
 ### Added
@@ -7,7 +16,6 @@
 - End-to-end test for explicit SQLAlchemy aliases with GROUP BY + JOIN
 - Compiler support for subqueries in UPDATE/DELETE WHERE clauses
 - End-to-end tests for UPDATE/DELETE with IN/NOT IN subqueries
-
 ### Changed
 - Removed GROUP BY + JOIN, HAVING + JOIN, and aggregate + JOIN compiler guards
 - Removed UpdateBase subquery rejection guards in visit_subquery and visit_grouping

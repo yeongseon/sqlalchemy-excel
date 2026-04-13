@@ -8,6 +8,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    case,
     create_engine,
     delete,
     exc,
@@ -2776,5 +2777,328 @@ def test_e2e_aggregate_with_arithmetic_arg_rejected(tmp_path) -> None:
         stmt = sa.select(sa.func.sum(products.c.price * products.c.qty))
         with pytest.raises(exc.CompileError):
             conn.execute(stmt)
+
+    engine.dispose()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Phase 19: CASE WHEN expressions
+# ──────────────────────────────────────────────────────────────────────
+
+
+def _status_table(metadata: MetaData) -> Table:
+    return Table(
+        "people",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+        Column("age", Integer),
+        Column("status", String),
+    )
+
+
+def _seed_status_data(engine: sa.engine.Engine, table: Table) -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            insert(table),
+            [
+                {"id": 1, "name": "Alice", "age": 30, "status": "active"},
+                {"id": 2, "name": "Bob", "age": 25, "status": "inactive"},
+                {"id": 3, "name": "Charlie", "age": 35, "status": "active"},
+                {"id": 4, "name": "Diana", "age": 22, "status": "pending"},
+            ],
+        )
+
+
+def test_e2e_case_when_searched_basic(tmp_path) -> None:
+    """Searched CASE WHEN with multiple conditions."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    people = _status_table(metadata)
+    metadata.create_all(engine)
+    _seed_status_data(engine, people)
+
+    with engine.connect() as conn:
+        stmt = select(
+            people.c.name,
+            case(
+                (people.c.age >= 30, sa.literal("senior")),
+                else_=sa.literal("junior"),
+            ).label("category"),
+        ).order_by(people.c.id)
+        rows = conn.execute(stmt).all()
+        assert rows == [
+            ("Alice", "senior"),
+            ("Bob", "junior"),
+            ("Charlie", "senior"),
+            ("Diana", "junior"),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_case_when_no_else(tmp_path) -> None:
+    """CASE WHEN with no ELSE clause returns None for unmatched rows."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    people = _status_table(metadata)
+    metadata.create_all(engine)
+    _seed_status_data(engine, people)
+
+    with engine.connect() as conn:
+        stmt = select(
+            people.c.name,
+            case(
+                (people.c.age >= 30, sa.literal("old")),
+            ).label("tag"),
+        ).order_by(people.c.id)
+        rows = conn.execute(stmt).all()
+        assert rows == [
+            ("Alice", "old"),
+            ("Bob", None),
+            ("Charlie", "old"),
+            ("Diana", None),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_case_when_multiple_conditions(tmp_path) -> None:
+    """CASE WHEN with multiple WHEN branches."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    people = _status_table(metadata)
+    metadata.create_all(engine)
+    _seed_status_data(engine, people)
+
+    with engine.connect() as conn:
+        stmt = select(
+            people.c.name,
+            case(
+                (people.c.age >= 35, sa.literal("senior")),
+                (people.c.age >= 25, sa.literal("mid")),
+                else_=sa.literal("junior"),
+            ).label("tier"),
+        ).order_by(people.c.id)
+        rows = conn.execute(stmt).all()
+        assert rows == [
+            ("Alice", "mid"),
+            ("Bob", "mid"),
+            ("Charlie", "senior"),
+            ("Diana", "junior"),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_case_when_with_alias(tmp_path) -> None:
+    """CASE WHEN result columns expose correct alias via cursor.description."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    people = _status_table(metadata)
+    metadata.create_all(engine)
+    _seed_status_data(engine, people)
+
+    with engine.connect() as conn:
+        stmt = select(
+            people.c.name,
+            case(
+                (people.c.status == "active", sa.literal("A")),
+                else_=sa.literal("I"),
+            ).label("code"),
+        )
+        result = conn.execute(stmt)
+        keys = list(result.keys())
+        assert "code" in keys
+        rows = result.all()
+        assert len(rows) == 4
+
+    engine.dispose()
+
+
+def test_e2e_case_when_in_update(tmp_path) -> None:
+    """CASE WHEN in UPDATE SET clause."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    people = _status_table(metadata)
+    metadata.create_all(engine)
+    _seed_status_data(engine, people)
+
+    with engine.begin() as conn:
+        stmt = update(people).values(
+            age=case(
+                (people.c.status == "active", 99),
+                else_=0,
+            )
+        )
+        conn.execute(stmt)
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(people.c.name, people.c.age).order_by(people.c.id)
+        ).all()
+        assert rows == [
+            ("Alice", 99),
+            ("Bob", 0),
+            ("Charlie", 99),
+            ("Diana", 0),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_case_when_in_update_with_where(tmp_path) -> None:
+    """CASE WHEN in UPDATE SET with WHERE filter."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    people = _status_table(metadata)
+    metadata.create_all(engine)
+    _seed_status_data(engine, people)
+
+    with engine.begin() as conn:
+        stmt = (
+            update(people)
+            .where(people.c.age >= 25)
+            .values(
+                age=case(
+                    (people.c.status == "active", 100),
+                    else_=50,
+                )
+            )
+        )
+        result = conn.execute(stmt)
+        assert result.rowcount == 3  # Alice(30), Bob(25), Charlie(35)
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(people.c.name, people.c.age).order_by(people.c.id)
+        ).all()
+        # Alice: active → 100, Bob: inactive → 50, Charlie: active → 100
+        # Diana: age 22 < 25, not matched by WHERE → stays 22
+        assert rows == [
+            ("Alice", 100),
+            ("Bob", 50),
+            ("Charlie", 100),
+            ("Diana", 22),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_case_when_multiple_columns(tmp_path) -> None:
+    """Multiple CASE WHEN columns in same SELECT."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    people = _status_table(metadata)
+    metadata.create_all(engine)
+    _seed_status_data(engine, people)
+
+    with engine.connect() as conn:
+        stmt = select(
+            people.c.name,
+            case(
+                (people.c.age >= 30, sa.literal("senior")),
+                else_=sa.literal("junior"),
+            ).label("tier"),
+            case(
+                (people.c.status == "active", sa.literal("A")),
+                (people.c.status == "inactive", sa.literal("I")),
+                else_=sa.literal("P"),
+            ).label("code"),
+        ).order_by(people.c.id)
+        rows = conn.execute(stmt).all()
+        assert rows == [
+            ("Alice", "senior", "A"),
+            ("Bob", "junior", "I"),
+            ("Charlie", "senior", "A"),
+            ("Diana", "junior", "P"),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_case_when_numeric_result(tmp_path) -> None:
+    """CASE WHEN with numeric results."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    people = _status_table(metadata)
+    metadata.create_all(engine)
+    _seed_status_data(engine, people)
+
+    with engine.connect() as conn:
+        stmt = select(
+            people.c.name,
+            case(
+                (people.c.age >= 35, 100),
+                (people.c.age >= 25, 50),
+                else_=10,
+            ).label("score"),
+        ).order_by(people.c.id)
+        rows = conn.execute(stmt).all()
+        assert rows == [
+            ("Alice", 50),
+            ("Bob", 50),
+            ("Charlie", 100),
+            ("Diana", 10),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_case_when_with_order_by(tmp_path) -> None:
+    """CASE WHEN with ORDER BY on another column."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    people = _status_table(metadata)
+    metadata.create_all(engine)
+    _seed_status_data(engine, people)
+
+    with engine.connect() as conn:
+        stmt = (
+            select(
+                people.c.name,
+                case(
+                    (people.c.status == "active", sa.literal("yes")),
+                    else_=sa.literal("no"),
+                ).label("active"),
+            )
+            .order_by(people.c.name)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [
+            ("Alice", "yes"),
+            ("Bob", "no"),
+            ("Charlie", "yes"),
+            ("Diana", "no"),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_case_when_with_where(tmp_path) -> None:
+    """CASE WHEN combined with WHERE clause."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    people = _status_table(metadata)
+    metadata.create_all(engine)
+    _seed_status_data(engine, people)
+
+    with engine.connect() as conn:
+        stmt = (
+            select(
+                people.c.name,
+                case(
+                    (people.c.age >= 30, sa.literal("old")),
+                    else_=sa.literal("young"),
+                ).label("age_group"),
+            )
+            .where(people.c.status == "active")
+            .order_by(people.c.id)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [
+            ("Alice", "old"),
+            ("Charlie", "old"),
+        ]
 
     engine.dispose()
