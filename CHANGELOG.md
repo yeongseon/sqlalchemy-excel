@@ -19,7 +19,7 @@
 ### Changed
 - `_validate_join_tree()` now validates JOIN subtrees recursively instead of rejecting chained JOINs
 - JOIN ON-clause cross-source validation now resolves tables across each JOIN side, including nested JOIN nodes
-- GROUP BY + JOIN guard now covers chained JOIN trees through JOIN-subtree validation flow
+- GROUP BY + JOIN, HAVING + JOIN, and aggregate + JOIN are now allowed by the compiler (DISTINCT + JOIN guard remains)
 
 ## [0.5.0] - 2026-04-13
 

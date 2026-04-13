@@ -576,8 +576,8 @@ def test_compiler_rejects_join_with_distinct(tmp_xlsx: str) -> None:
     engine.dispose()
 
 
-def test_compiler_rejects_join_with_aggregate(tmp_xlsx: str) -> None:
-    """JOIN + aggregate functions should be rejected at compile time."""
+def test_compiler_accepts_join_with_aggregate(tmp_xlsx: str) -> None:
+    """JOIN + aggregate functions should compile."""
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, orders = _build_tables(metadata)
@@ -585,14 +585,16 @@ def test_compiler_rejects_join_with_aggregate(tmp_xlsx: str) -> None:
     stmt = select(func.count(users.c.id)).join(
         orders, users.c.id == orders.c.user_id
     )
-    with pytest.raises(exc.CompileError, match="aggregate functions with JOIN"):
-        stmt.compile(dialect=engine.dialect)
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert "COUNT(" in sql.upper()
+    assert "JOIN" in sql
 
     engine.dispose()
 
 
-def test_compiler_rejects_join_with_group_by(tmp_xlsx: str) -> None:
-    """JOIN + GROUP BY should be rejected at compile time."""
+def test_compiler_accepts_join_with_group_by(tmp_xlsx: str) -> None:
+    """JOIN + GROUP BY should compile."""
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, orders = _build_tables(metadata)
@@ -602,14 +604,16 @@ def test_compiler_rejects_join_with_group_by(tmp_xlsx: str) -> None:
         .join(orders, users.c.id == orders.c.user_id)
         .group_by(users.c.name)
     )
-    with pytest.raises(exc.CompileError, match="GROUP BY with JOIN"):
-        stmt.compile(dialect=engine.dialect)
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert "JOIN" in sql
+    assert "GROUP BY" in sql
 
     engine.dispose()
 
 
-def test_compiler_rejects_join_with_having(tmp_xlsx: str) -> None:
-    """JOIN + HAVING should be rejected at compile time."""
+def test_compiler_accepts_join_with_having(tmp_xlsx: str) -> None:
+    """JOIN + HAVING should compile."""
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, orders = _build_tables(metadata)
@@ -620,8 +624,11 @@ def test_compiler_rejects_join_with_having(tmp_xlsx: str) -> None:
         .group_by(users.c.name)
         .having(func.count(users.c.id) > 1)
     )
-    with pytest.raises(exc.CompileError, match="(GROUP BY|HAVING) with JOIN"):
-        stmt.compile(dialect=engine.dialect)
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert "JOIN" in sql
+    assert "GROUP BY" in sql
+    assert "HAVING" in sql
 
     engine.dispose()
 
@@ -767,7 +774,7 @@ def test_compiler_chained_join_with_where_and_order_by(tmp_xlsx: str) -> None:
     engine.dispose()
 
 
-def test_compiler_rejects_group_by_with_chained_join(tmp_xlsx: str) -> None:
+def test_compiler_accepts_group_by_with_chained_join(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, orders = _build_tables(metadata)
@@ -785,8 +792,10 @@ def test_compiler_rejects_group_by_with_chained_join(tmp_xlsx: str) -> None:
         .group_by(users.c.name)
     )
 
-    with pytest.raises(exc.CompileError, match="GROUP BY with JOIN"):
-        stmt.compile(dialect=engine.dialect)
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert sql.count("JOIN") == 2
+    assert "GROUP BY" in sql
 
     engine.dispose()
 

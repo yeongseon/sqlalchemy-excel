@@ -972,6 +972,286 @@ def test_e2e_group_by_order_by_group_key_not_in_select(tmp_path) -> None:
     engine.dispose()
 
 
+def test_e2e_group_by_with_join(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+        Column("status", String),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+                {"id": 3, "name": "Cara", "age": 40},
+            ],
+        )
+        conn.execute(
+            insert(orders),
+            [
+                {"id": 10, "user_id": 1, "amount": 100, "status": "paid"},
+                {"id": 11, "user_id": 1, "amount": 150, "status": "paid"},
+                {"id": 12, "user_id": 2, "amount": 50, "status": "pending"},
+            ],
+        )
+
+    with engine.connect() as conn:
+        stmt = (
+            sa.select(users.c.name, sa.func.count())
+            .select_from(users.join(orders, users.c.id == orders.c.user_id))
+            .group_by(users.c.name)
+            .order_by(users.c.name)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [("Alice", 2), ("Bob", 1)]
+
+    engine.dispose()
+
+
+def test_e2e_group_by_join_with_having(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+        Column("status", String),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+            ],
+        )
+        conn.execute(
+            insert(orders),
+            [
+                {"id": 10, "user_id": 1, "amount": 100, "status": "paid"},
+                {"id": 11, "user_id": 1, "amount": 150, "status": "paid"},
+                {"id": 12, "user_id": 2, "amount": 50, "status": "pending"},
+            ],
+        )
+
+    with engine.connect() as conn:
+        order_count = sa.func.count()
+        stmt = (
+            sa.select(users.c.name, order_count)
+            .select_from(users.join(orders, users.c.id == orders.c.user_id))
+            .group_by(users.c.name)
+            .having(order_count > 1)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [("Alice", 2)]
+
+    engine.dispose()
+
+
+def test_e2e_group_by_join_with_sum(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+        Column("status", String),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+            ],
+        )
+        conn.execute(
+            insert(orders),
+            [
+                {"id": 10, "user_id": 1, "amount": 100, "status": "paid"},
+                {"id": 11, "user_id": 1, "amount": 150, "status": "paid"},
+                {"id": 12, "user_id": 2, "amount": 50, "status": "pending"},
+            ],
+        )
+
+    with engine.connect() as conn:
+        total_amount = sa.func.sum(orders.c.amount)
+        stmt = (
+            sa.select(users.c.name, total_amount)
+            .select_from(users.join(orders, users.c.id == orders.c.user_id))
+            .group_by(users.c.name)
+            .order_by(users.c.name)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [("Alice", 250), ("Bob", 50)]
+
+    engine.dispose()
+
+
+def test_e2e_group_by_join_order_by_aggregate(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+        Column("status", String),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+                {"id": 3, "name": "Cara", "age": 40},
+            ],
+        )
+        conn.execute(
+            insert(orders),
+            [
+                {"id": 10, "user_id": 1, "amount": 100, "status": "paid"},
+                {"id": 11, "user_id": 1, "amount": 150, "status": "paid"},
+                {"id": 12, "user_id": 2, "amount": 50, "status": "pending"},
+                {"id": 13, "user_id": 3, "amount": 10, "status": "paid"},
+                {"id": 14, "user_id": 3, "amount": 20, "status": "pending"},
+                {"id": 15, "user_id": 3, "amount": 30, "status": "failed"},
+            ],
+        )
+
+    with engine.connect() as conn:
+        order_count = sa.func.count()
+        stmt = (
+            sa.select(users.c.name, order_count)
+            .select_from(users.join(orders, users.c.id == orders.c.user_id))
+            .group_by(users.c.name)
+            .order_by(order_count.desc(), users.c.name.asc())
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [("Cara", 3), ("Alice", 2), ("Bob", 1)]
+
+    engine.dispose()
+
+
+def test_e2e_group_by_join_multiple_columns(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+        Column("status", String),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+            ],
+        )
+        conn.execute(
+            insert(orders),
+            [
+                {"id": 10, "user_id": 1, "amount": 100, "status": "paid"},
+                {"id": 11, "user_id": 1, "amount": 150, "status": "pending"},
+                {"id": 12, "user_id": 2, "amount": 50, "status": "paid"},
+                {"id": 13, "user_id": 2, "amount": 75, "status": "pending"},
+            ],
+        )
+
+    with engine.connect() as conn:
+        stmt = (
+            sa.select(users.c.name, orders.c.status, sa.func.count())
+            .select_from(users.join(orders, users.c.id == orders.c.user_id))
+            .group_by(users.c.name, orders.c.status)
+            .order_by(users.c.name, orders.c.status)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [
+            ("Alice", "paid", 1),
+            ("Alice", "pending", 1),
+            ("Bob", "paid", 1),
+            ("Bob", "pending", 1),
+        ]
+
+    engine.dispose()
+
+def test_e2e_group_by_join_explicit_alias(tmp_path) -> None:
+    """Regression: GROUP BY + JOIN with explicit SQLAlchemy aliases."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+            ],
+        )
+        conn.execute(
+            insert(orders),
+            [
+                {"id": 10, "user_id": 1, "amount": 100},
+                {"id": 11, "user_id": 1, "amount": 150},
+                {"id": 12, "user_id": 2, "amount": 50},
+            ],
+        )
+
+    u = users.alias("u")
+    o = orders.alias("o")
+
+    with engine.connect() as conn:
+        stmt = (
+            sa.select(u.c.name, sa.func.sum(o.c.amount).label("total"))
+            .select_from(u.join(o, u.c.id == o.c.user_id))
+            .group_by(u.c.name)
+            .order_by(u.c.name)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [("Alice", 250), ("Bob", 50)]
+
+    engine.dispose()
+
+
 def test_e2e_rejects_aggregate_arithmetic_projection(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
