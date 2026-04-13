@@ -1127,3 +1127,49 @@ def test_e2e_compound_with_branch_local_limit(tmp_path) -> None:
         assert ids == [1, 2, 3, 3]
 
     engine.dispose()
+
+
+
+
+def test_e2e_compound_mixed_operators(tmp_path) -> None:
+    """Mixed compound operators (UNION + INTERSECT) evaluate left-to-right.
+
+    SQL standard: set operations have no precedence.
+    A UNION B INTERSECT C == (A UNION B) INTERSECT C.
+    """
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+                {"id": 3, "name": "Charlie", "age": 35},
+                {"id": 4, "name": "Diana", "age": 28},
+            ],
+        )
+
+    t = Table("users", MetaData(), autoload_with=engine)
+    with engine.connect() as conn:
+        # Branch A: id IN (1, 2, 3)  →  {1, 2, 3}
+        # Branch B: id IN (2, 3, 4)  →  {2, 3, 4}
+        # Branch C: id IN (3, 4)     →  {3, 4}
+        # Left-to-right: (A UNION B) INTERSECT C
+        #   A UNION B = {1, 2, 3, 4}
+        #   {1, 2, 3, 4} INTERSECT {3, 4} = {3, 4}
+        stmt = sa.union(
+            select(t.c.id).where(t.c.id.in_([1, 2, 3])),
+            sa.intersect(
+                select(t.c.id).where(t.c.id.in_([2, 3, 4])),
+                select(t.c.id).where(t.c.id.in_([3, 4])),
+            ),
+        )
+        rows = conn.execute(stmt).all()
+        ids = sorted(r[0] for r in rows)
+        assert ids == [3, 4]
+
+    engine.dispose()

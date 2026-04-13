@@ -1353,3 +1353,53 @@ def test_has_top_level_limit_offset_identifier_boundary() -> None:
     assert ExcelCompiler._has_top_level_limit_offset(
         "SELECT limit_col FROM t LIMIT 5"
     ) is True
+
+
+def test_compound_mixed_operators_flat(tmp_xlsx: str) -> None:
+    """Mixed compound operators (union + intersect) produce flat SQL.
+
+    SQLAlchemy flattens nested compound expressions like
+    ``union(a, intersect(b, c))`` into ``A UNION B INTERSECT C``.
+    This is correct per SQL standard: set operations have no
+    precedence and are evaluated left-to-right.
+    """
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    a = select(users.c.id).where(users.c.id > 1)
+    b = select(users.c.id).where(users.c.id > 2)
+    c = select(users.c.id).where(users.c.id > 3)
+
+    stmt = sa.union(a, sa.intersect(b, c))
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    # Flat chain with no nested parens around the INTERSECT branches.
+    assert "UNION" in sql
+    assert "INTERSECT" in sql
+    # Must NOT start with '(' — branches are unwrapped.
+    assert not sql.startswith("(")
+    # No nested compound parens: '(SELECT ... INTERSECT SELECT ...)' must not appear.
+    assert "(SELECT" not in sql
+
+    engine.dispose()
+
+
+def test_strip_compound_branch_parens_mixed_operators_unit() -> None:
+    """Unit test: mixed-operator compound SQL passes through unchanged."""
+    from sqlalchemy_excel.compiler import ExcelCompiler
+
+    # Flat three-branch mixed compound — no parens to strip.
+    sql = (
+        "SELECT id FROM t1 WHERE id > ? "
+        "UNION SELECT id FROM t1 WHERE id > ? "
+        "INTERSECT SELECT id FROM t1 WHERE id > ?"
+    )
+    assert ExcelCompiler._strip_compound_branch_parens(sql) == sql
+
+    # Flat with EXCEPT.
+    sql2 = (
+        "SELECT id FROM t1 "
+        "UNION SELECT id FROM t2 "
+        "EXCEPT SELECT id FROM t3"
+    )
+    assert ExcelCompiler._strip_compound_branch_parens(sql2) == sql2
