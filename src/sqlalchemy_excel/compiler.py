@@ -36,7 +36,7 @@ import re
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from sqlalchemy import exc
-from sqlalchemy.sql import compiler, dml, elements, operators, visitors
+from sqlalchemy.sql import coercions, compiler, dml, elements, operators, roles, visitors
 from sqlalchemy.sql.expression import Join
 
 if TYPE_CHECKING:
@@ -899,6 +899,126 @@ class ExcelCompiler(compiler.SQLCompiler):
                             return True
                 scan = kp + len(keyword)
         return False
+
+    def _on_conflict_target(self, clause: Any, **kw: Any) -> str:
+        if clause.inferred_target_elements is not None:
+            target_text = "(%s)" % ", ".join(
+                (
+                    self.preparer.quote(c)
+                    if isinstance(c, str)
+                    else self.process(c, include_table=False, use_schema=False)
+                )
+                for c in clause.inferred_target_elements
+            )
+            if clause.inferred_target_whereclause is not None:
+                whereclause_kw = dict(kw)
+                whereclause_kw.update(
+                    include_table=False,
+                    use_schema=False,
+                    literal_execute=True,
+                )
+                target_text += " WHERE %s" % self.process(
+                    clause.inferred_target_whereclause,
+                    **whereclause_kw,
+                )
+        else:
+            target_text = ""
+
+        return target_text
+
+    def visit_on_conflict_do_nothing(self, on_conflict: Any, **kw: Any) -> str:
+        target_text = self._on_conflict_target(on_conflict, **kw)
+
+        if target_text:
+            return "ON CONFLICT %s DO NOTHING" % target_text
+        else:
+            return "ON CONFLICT DO NOTHING"
+
+    def visit_on_conflict_do_update(self, on_conflict: Any, **kw: Any) -> str:
+        clause = on_conflict
+
+        target_text = self._on_conflict_target(on_conflict, **kw)
+
+        action_set_ops: list[str] = []
+
+        set_parameters = dict(clause.update_values_to_set)
+
+        original_has_join = self._has_join
+        self._has_join = True
+        try:
+            insert_statement = cast(Any, self.stack[-1]["selectable"])
+            cols = insert_statement.table.c
+            set_kw = dict(kw)
+            set_kw.update(use_schema=False)
+            for c in cols:
+                col_key = c.key
+
+                if col_key in set_parameters:
+                    value = set_parameters.pop(col_key)
+                elif c in set_parameters:
+                    value = set_parameters.pop(c)
+                else:
+                    continue
+
+                if coercions._is_literal(value):
+                    value = elements.BindParameter(None, value, type_=c.type)
+
+                else:
+                    if isinstance(value, elements.BindParameter) and value.type._isnull:
+                        value = value._clone()
+                        value.type = c.type
+                value_text = self.process(
+                    value.self_group(),
+                    is_upsert_set=True,
+                    **set_kw,
+                )
+
+                key_text = self.preparer.quote(c.name)
+                action_set_ops.append("%s = %s" % (key_text, value_text))
+
+            if set_parameters:
+                from sqlalchemy import util as sa_util
+
+                table_name = getattr(
+                    getattr(self.current_executable, "table", None),
+                    "name",
+                    "<unknown>",
+                )
+
+                sa_util.warn(
+                    "Additional column names not matching "
+                    "any column keys in table '%s': %s"
+                    % (
+                        table_name,
+                        (", ".join("'%s'" % c for c in set_parameters)),
+                    )
+                )
+                for k, v in set_parameters.items():
+                    key_text = (
+                        self.preparer.quote(k)
+                        if isinstance(k, str)
+                        else self.process(k, **set_kw)
+                    )
+                    value_text = self.process(
+                        coercions.expect(roles.ExpressionElementRole, v),
+                        is_upsert_set=True,
+                        **set_kw,
+                    )
+                    action_set_ops.append("%s = %s" % (key_text, value_text))
+
+            action_text = ", ".join(action_set_ops)
+            if clause.update_whereclause is not None:
+                where_kw = dict(kw)
+                where_kw.update(include_table=True, use_schema=False)
+                action_text += " WHERE %s" % self.process(
+                    clause.update_whereclause,
+                    **where_kw,
+                )
+
+            return "ON CONFLICT %s DO UPDATE SET %s" % (target_text, action_text)
+        finally:
+            self._has_join = original_has_join
+
     def visit_over(
         self,
         over: Any,
