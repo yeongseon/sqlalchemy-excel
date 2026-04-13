@@ -20,6 +20,8 @@
 - E2E tests: inner join, left join with NULL fill
 - Compiler guard tests for JOIN compilation
 - Direct `visit_subquery` guard tests for improved coverage
+- `supports_multivalues_insert = True` dialect flag for multi-row INSERT support
+- `visit_insert()` compiler override for `from_select()` (INSERT...SELECT) compilation
 
 ### Changed
 - `visit_join()`: removed CompileError guard, delegates to base SQLAlchemy compiler
