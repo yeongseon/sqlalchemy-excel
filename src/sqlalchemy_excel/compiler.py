@@ -6,15 +6,18 @@ excel-dbapi's parser understands:
 Supported:
     SELECT columns FROM table [WHERE ...] [GROUP BY ...] [HAVING ...] [ORDER BY col [ASC|DESC]] [LIMIT n] [OFFSET n]
     SELECT DISTINCT columns FROM table [WHERE ...] ...
-    SELECT cols FROM t1 [INNER|LEFT|RIGHT] JOIN t2 ON ... { JOIN t3 ON ... } [WHERE ...] [ORDER BY ...] [LIMIT n] [OFFSET n]
+    SELECT cols FROM t1 [INNER|LEFT|RIGHT|FULL OUTER] JOIN t2 ON ... { JOIN t3 ON ... } [WHERE ...] [ORDER BY ...] [LIMIT n] [OFFSET n]
+    SELECT cols FROM t1 CROSS JOIN t2 [WHERE ...] [ORDER BY ...] [LIMIT n] [OFFSET n]
+    UNION / UNION ALL / INTERSECT / EXCEPT compound SELECT
     INSERT INTO table (cols) VALUES (vals), (vals2), ...
     INSERT INTO table (cols) SELECT cols FROM source [WHERE ...]
     UPDATE table SET col=val [WHERE ...]
     DELETE FROM table [WHERE ...]
 
     Rejected (raises CompileError):
-    CTEs, window functions, RETURNING, FOR UPDATE,
-    NATURAL JOIN, non-equality/OR/non-column ON clauses
+    CTEs, window functions, aggregate FILTER, RETURNING, FOR UPDATE,
+    NATURAL JOIN, non-equality/OR/non-column ON clauses,
+    DISTINCT with JOIN, grouped/nested compound branches
 
     Partially supported:
     non-correlated subqueries in WHERE ... IN (SELECT single_col FROM table [WHERE ...])

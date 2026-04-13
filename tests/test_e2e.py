@@ -380,6 +380,94 @@ def test_e2e_join_left(tmp_path) -> None:
     engine.dispose()
 
 
+def test_e2e_right_join_raw_sql(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            sa.text(
+                "SELECT users.name, orders.amount "
+                "FROM users RIGHT JOIN orders ON users.id = orders.user_id"
+            )
+        ).all()
+        assert rows == [("Alice", 100)]
+
+    engine.dispose()
+
+
+def test_e2e_full_outer_join_raw_sql(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
+        conn.execute(insert(orders).values(id=2, user_id=999, amount=200))
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            sa.text(
+                "SELECT users.name, orders.amount "
+                "FROM users FULL OUTER JOIN orders ON users.id = orders.user_id"
+            )
+        ).all()
+        assert set(rows) == {("Alice", 100), ("Bob", None), (None, 200)}
+
+    engine.dispose()
+
+
+def test_e2e_cross_join_raw_sql(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    teams = Table(
+        "teams",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users), [{"id": 1, "name": "Alice", "age": 30}, {"id": 2, "name": "Bob", "age": 25}])
+        conn.execute(insert(teams), [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}])
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            sa.text(
+                "SELECT users.id, teams.id FROM users CROSS JOIN teams ORDER BY users.id, teams.id"
+            )
+        ).all()
+        assert rows == [(1, 1), (1, 2), (2, 1), (2, 2)]
+
+    engine.dispose()
+
+
 def test_e2e_subquery_in_where(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
