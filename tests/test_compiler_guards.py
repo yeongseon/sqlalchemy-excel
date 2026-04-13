@@ -1502,4 +1502,5 @@ def test_strip_compound_branch_parens_double_wrapped_grouped() -> None:
     # This is safe: the SQL will fail at the DBAPI parser level, not silently
     # produce wrong results.
     result = ExcelCompiler._strip_compound_branch_parens(double_wrapped)
-    assert "((SELECT" in result
+    # Passes through completely unchanged.
+    assert result == double_wrapped
