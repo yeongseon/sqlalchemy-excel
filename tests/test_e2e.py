@@ -47,6 +47,16 @@ def _users_table(metadata: MetaData) -> Table:
     )
 
 
+def _employees_table(metadata: MetaData) -> Table:
+    return Table(
+        "employees",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("team", String),
+        Column("dept", String),
+    )
+
+
 def test_e2e_core_crud_round_trip(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
@@ -395,6 +405,31 @@ def test_e2e_aggregate_count(tmp_path) -> None:
     engine.dispose()
 
 
+def test_count_distinct_basic(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    employees = _employees_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(employees),
+            [
+                {"id": 1, "team": "A", "dept": "Sales"},
+                {"id": 2, "team": "A", "dept": "Sales"},
+                {"id": 3, "team": "A", "dept": "Support"},
+                {"id": 4, "team": "B", "dept": None},
+            ],
+        )
+
+    with engine.connect() as conn:
+        stmt = select(sa.func.count(sa.distinct(employees.c.dept))).select_from(employees)
+        unique_depts = conn.execute(stmt).scalar_one()
+        assert unique_depts == 2
+
+    engine.dispose()
+
+
 def test_e2e_aggregate_sum_avg_min_max(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
@@ -473,6 +508,34 @@ def test_e2e_aggregate_alias(tmp_path) -> None:
     engine.dispose()
 
 
+def test_count_distinct_with_alias(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    employees = _employees_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(employees),
+            [
+                {"id": 1, "team": "A", "dept": "Sales"},
+                {"id": 2, "team": "A", "dept": "Sales"},
+                {"id": 3, "team": "A", "dept": "Support"},
+            ],
+        )
+
+    with engine.connect() as conn:
+        stmt = select(
+            sa.func.count(sa.distinct(employees.c.dept)).label("unique_depts")
+        ).select_from(employees)
+        result = conn.execute(stmt)
+        assert list(result.keys()) == ["unique_depts"]
+        row = result.one()
+        assert row[0] == 2
+
+    engine.dispose()
+
+
 def test_e2e_order_by_alias(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
@@ -538,6 +601,107 @@ def test_e2e_group_by(tmp_path) -> None:
         )
         rows = conn.execute(stmt).all()
         assert rows == [("Alice", 2), ("Bob", 1)]
+
+    engine.dispose()
+
+
+def test_count_distinct_with_group_by(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    employees = _employees_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(employees),
+            [
+                {"id": 1, "team": "A", "dept": "Sales"},
+                {"id": 2, "team": "A", "dept": "Sales"},
+                {"id": 3, "team": "A", "dept": "Support"},
+                {"id": 4, "team": "B", "dept": "Finance"},
+                {"id": 5, "team": "B", "dept": "Finance"},
+                {"id": 6, "team": "B", "dept": None},
+            ],
+        )
+
+    with engine.connect() as conn:
+        stmt = (
+            select(employees.c.team, sa.func.count(sa.distinct(employees.c.dept)))
+            .group_by(employees.c.team)
+            .order_by(employees.c.team)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [("A", 2), ("B", 1)]
+
+    engine.dispose()
+
+
+def test_count_distinct_having(tmp_path) -> None:
+    """HAVING with COUNT(DISTINCT col) filter."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    employees = _employees_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(employees),
+            [
+                {"id": 1, "team": "A", "dept": "Sales"},
+                {"id": 2, "team": "A", "dept": "Support"},
+                {"id": 3, "team": "A", "dept": "Finance"},
+                {"id": 4, "team": "B", "dept": "Sales"},
+                {"id": 5, "team": "B", "dept": "Sales"},
+                {"id": 6, "team": "C", "dept": "Sales"},
+                {"id": 7, "team": "C", "dept": "Support"},
+            ],
+        )
+
+    with engine.connect() as conn:
+        stmt = (
+            select(employees.c.team, sa.func.count(sa.distinct(employees.c.dept)))
+            .group_by(employees.c.team)
+            .having(sa.func.count(sa.distinct(employees.c.dept)) > 1)
+            .order_by(employees.c.team)
+        )
+        rows = conn.execute(stmt).all()
+        # A: 3 distinct depts (>1), B: 1 distinct dept (not >1), C: 2 distinct depts (>1)
+        assert rows == [("A", 3), ("C", 2)]
+
+    engine.dispose()
+
+
+def test_count_distinct_order_by(tmp_path) -> None:
+    """ORDER BY COUNT(DISTINCT col)."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    employees = _employees_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(employees),
+            [
+                {"id": 1, "team": "A", "dept": "Sales"},
+                {"id": 2, "team": "A", "dept": "Support"},
+                {"id": 3, "team": "A", "dept": "Finance"},
+                {"id": 4, "team": "B", "dept": "Sales"},
+                {"id": 5, "team": "B", "dept": "Sales"},
+                {"id": 6, "team": "C", "dept": "Sales"},
+                {"id": 7, "team": "C", "dept": "Support"},
+            ],
+        )
+
+    with engine.connect() as conn:
+        cnt_distinct = sa.func.count(sa.distinct(employees.c.dept))
+        stmt = (
+            select(employees.c.team, cnt_distinct)
+            .group_by(employees.c.team)
+            .order_by(cnt_distinct.desc())
+        )
+        rows = conn.execute(stmt).all()
+        # A: 3 distinct depts, C: 2 distinct depts, B: 1 distinct dept
+        assert rows == [("A", 3), ("C", 2), ("B", 1)]
 
     engine.dispose()
 

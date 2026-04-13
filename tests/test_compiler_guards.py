@@ -127,14 +127,14 @@ def test_insert_from_select_compiles(tmp_xlsx: str) -> None:
     engine.dispose()
 
 
-def test_compiler_rejects_count_distinct(tmp_xlsx: str) -> None:
+def test_compiler_allows_count_distinct(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, _ = _build_tables(metadata)
 
     stmt = select(func.count(distinct(users.c.name))).select_from(users)
-    with pytest.raises(exc.CompileError, match="expression arguments"):
-        stmt.compile(dialect=engine.dialect)
+    sql = str(stmt.compile(dialect=engine.dialect)).lower()
+    assert "count(distinct name)" in sql
 
     engine.dispose()
 
