@@ -739,8 +739,8 @@ def test_compiler_rejects_invalid_outer_on_in_chained_join(tmp_xlsx: str) -> Non
     engine.dispose()
 
 
-def test_compiler_rejects_full_outer_join(tmp_xlsx: str) -> None:
-    """FULL OUTER JOIN should be rejected at compile time."""
+def test_compiler_accepts_full_outer_join(tmp_xlsx: str) -> None:
+    """FULL OUTER JOIN should compile."""
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, orders = _build_tables(metadata)
@@ -749,13 +749,15 @@ def test_compiler_rejects_full_outer_join(tmp_xlsx: str) -> None:
         select(users.c.name, orders.c.user_id)
         .join(orders, users.c.id == orders.c.user_id, full=True)
     )
-    with pytest.raises(exc.CompileError, match="FULL OUTER JOIN"):
-        stmt.compile(dialect=engine.dialect)
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert "FULL OUTER JOIN" in sql
+    assert "ON" in sql
 
     engine.dispose()
 
 
-def test_compiler_rejects_full_outer_join_in_chain(tmp_xlsx: str) -> None:
+def test_compiler_accepts_full_outer_join_in_chain(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, orders = _build_tables(metadata)
@@ -772,8 +774,10 @@ def test_compiler_rejects_full_outer_join_in_chain(tmp_xlsx: str) -> None:
         .join(admins, users.c.id == admins.c.user_id, full=True)
     )
 
-    with pytest.raises(exc.CompileError, match="FULL OUTER JOIN"):
-        stmt.compile(dialect=engine.dialect)
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert "FULL OUTER JOIN" in sql
+    assert sql.count("JOIN") == 2
 
     engine.dispose()
 
@@ -794,9 +798,8 @@ def test_compiler_rejects_non_equality_on_clause(tmp_xlsx: str) -> None:
     engine.dispose()
 
 
-def test_compiler_rejects_true_on_clause(tmp_xlsx: str) -> None:
-    """true() ON clause (cross-join-like) should be rejected at compile time."""
-    from sqlalchemy import true
+def test_compiler_accepts_true_on_clause_as_cross_join(tmp_xlsx: str) -> None:
+    """true() ON clause should compile as CROSS JOIN."""
 
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
@@ -804,7 +807,43 @@ def test_compiler_rejects_true_on_clause(tmp_xlsx: str) -> None:
 
     stmt = (
         select(users.c.name, orders.c.user_id)
-        .join(orders, true())
+        .join(orders, sa.true())
+    )
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert "CROSS JOIN" in sql
+    assert " ON " not in sql
+
+    engine.dispose()
+
+
+def test_compiler_accepts_wrapped_true_as_cross_join(tmp_xlsx: str) -> None:
+    """Wrapped true() via self_group() should still compile as CROSS JOIN."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = (
+        select(users.c.name, orders.c.user_id)
+        .join(orders, sa.true().self_group())
+    )
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert "CROSS JOIN" in sql
+    assert " ON " not in sql
+
+    engine.dispose()
+
+
+def test_compiler_rejects_literal_true_as_cross_join(tmp_xlsx: str) -> None:
+    """sa.literal(True) should NOT become CROSS JOIN - it's not sa.true()."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = (
+        select(users.c.name, orders.c.user_id)
+        .join(orders, sa.literal(True))
     )
     with pytest.raises(exc.CompileError, match="equality comparisons"):
         stmt.compile(dialect=engine.dialect)

@@ -15,7 +15,6 @@ from sqlalchemy import (
     insert,
     inspect,
     select,
-    true,
     update,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
@@ -1098,51 +1097,179 @@ def test_e2e_right_join_via_swapped_left_join(tmp_path) -> None:
     engine.dispose()
 
 
-def test_e2e_full_outer_join_rejected_at_compile_time(tmp_path) -> None:
-    """FULL OUTER JOIN raises CompileError, not a later DBAPI error."""
+def test_e2e_full_outer_join_basic(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
-    users = _users_table(metadata)
-    orders = Table(
-        "orders",
+    t1 = Table(
+        "t1",
         metadata,
         Column("id", Integer, primary_key=True),
-        Column("user_id", Integer),
+        Column("val1", String),
+    )
+    t2 = Table(
+        "t2",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("val2", String),
     )
     metadata.create_all(engine)
 
-    stmt = (
-        select(users.c.name, orders.c.user_id)
-        .join(orders, users.c.id == orders.c.user_id, full=True)
-    )
-    with pytest.raises(exc.CompileError, match="FULL OUTER JOIN"):
-        with engine.connect() as conn:
-            conn.execute(stmt).all()
+    with engine.begin() as conn:
+        conn.execute(insert(t1), [{"id": 1, "val1": "a1"}, {"id": 2, "val1": "a2"}, {"id": 4, "val1": "a4"}])
+        conn.execute(insert(t2), [{"id": 1, "val2": "b1"}, {"id": 2, "val2": "b2"}, {"id": 3, "val2": "b3"}])
 
+    with engine.connect() as conn:
+        stmt = select(t1.c.id, t1.c.val1, t2.c.id, t2.c.val2).select_from(
+            t1.outerjoin(t2, t1.c.id == t2.c.id, full=True)
+        )
+        rows = conn.execute(stmt).all()
+
+    rows_sorted = sorted(rows, key=lambda r: (r[0] is None, r[0] or 0, r[2] is None, r[2] or 0))
+    assert rows_sorted == [
+        (1, "a1", 1, "b1"),
+        (2, "a2", 2, "b2"),
+        (4, "a4", None, None),
+        (None, None, 3, "b3"),
+    ]
     engine.dispose()
 
 
-def test_e2e_non_equality_on_clause_rejected_at_compile_time(tmp_path) -> None:
-    """Non-equality ON clause (e.g. true()) raises CompileError."""
+def test_e2e_full_outer_join_all_match(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
-    users = _users_table(metadata)
-    orders = Table(
-        "orders",
-        metadata,
-        Column("id", Integer, primary_key=True),
-        Column("user_id", Integer),
-    )
+    t1 = Table("t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String))
+    t2 = Table("t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String))
     metadata.create_all(engine)
 
-    stmt = (
-        select(users.c.name, orders.c.user_id)
-        .join(orders, true())
-    )
-    with pytest.raises(exc.CompileError, match="equality comparisons"):
-        with engine.connect() as conn:
-            conn.execute(stmt).all()
+    with engine.begin() as conn:
+        conn.execute(insert(t1), [{"id": 1, "val1": "a1"}, {"id": 2, "val1": "a2"}])
+        conn.execute(insert(t2), [{"id": 1, "val2": "b1"}, {"id": 2, "val2": "b2"}])
 
+    with engine.connect() as conn:
+        full_stmt = select(t1.c.id, t1.c.val1, t2.c.val2).select_from(
+            t1.outerjoin(t2, t1.c.id == t2.c.id, full=True)
+        )
+        inner_stmt = select(t1.c.id, t1.c.val1, t2.c.val2).select_from(
+            t1.join(t2, t1.c.id == t2.c.id)
+        )
+        full_rows = sorted(conn.execute(full_stmt).all())
+        inner_rows = sorted(conn.execute(inner_stmt).all())
+
+    assert full_rows == inner_rows == [(1, "a1", "b1"), (2, "a2", "b2")]
+    engine.dispose()
+
+
+def test_e2e_full_outer_join_with_where(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    t1 = Table("t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String))
+    t2 = Table("t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String))
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(t1), [{"id": 1, "val1": "a1"}, {"id": 2, "val1": "a2"}, {"id": 4, "val1": "a4"}])
+        conn.execute(insert(t2), [{"id": 1, "val2": "b1"}, {"id": 2, "val2": "b2"}, {"id": 3, "val2": "b3"}])
+
+    with engine.connect() as conn:
+        stmt = (
+            select(t1.c.id, t2.c.id)
+            .select_from(t1.outerjoin(t2, t1.c.id == t2.c.id, full=True))
+            .where(sa.or_(t1.c.id == 4, t2.c.id == 3))
+        )
+        rows = sorted(conn.execute(stmt).all(), key=lambda r: (r[0] is None, r[0] or 0, r[1] is None, r[1] or 0))
+
+    assert rows == [(4, None), (None, 3)]
+    engine.dispose()
+
+
+def test_e2e_full_outer_join_select_star(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    t1 = Table("t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String))
+    t2 = Table("t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String))
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(t1), [{"id": 1, "val1": "a1"}, {"id": 4, "val1": "a4"}])
+        conn.execute(insert(t2), [{"id": 1, "val2": "b1"}, {"id": 3, "val2": "b3"}])
+
+    with engine.connect() as conn:
+        stmt = select(t1, t2).select_from(t1.outerjoin(t2, t1.c.id == t2.c.id, full=True))
+        rows = sorted(conn.execute(stmt).all(), key=lambda r: (r[0] is None, r[0] or 0, r[2] is None, r[2] or 0))
+
+    assert rows == [
+        (1, "a1", 1, "b1"),
+        (4, "a4", None, None),
+        (None, None, 3, "b3"),
+    ]
+    engine.dispose()
+
+
+def test_e2e_cross_join_basic(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    t1 = Table("t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String))
+    t2 = Table("t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String))
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(t1), [{"id": 1, "val1": "a1"}, {"id": 2, "val1": "a2"}])
+        conn.execute(insert(t2), [{"id": 10, "val2": "b10"}, {"id": 20, "val2": "b20"}])
+
+    with engine.connect() as conn:
+        stmt = select(t1.c.id, t2.c.id).select_from(t1.join(t2, sa.true()))
+        rows = conn.execute(stmt).all()
+
+    assert len(rows) == 4
+    assert set(rows) == {(1, 10), (1, 20), (2, 10), (2, 20)}
+    engine.dispose()
+
+
+def test_e2e_cross_join_with_where(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    t1 = Table("t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String))
+    t2 = Table("t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String))
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(t1), [{"id": 1, "val1": "a1"}, {"id": 2, "val1": "a2"}, {"id": 3, "val1": "a3"}])
+        conn.execute(insert(t2), [{"id": 2, "val2": "b2"}, {"id": 3, "val2": "b3"}, {"id": 9, "val2": "b9"}])
+
+    with engine.connect() as conn:
+        stmt = (
+            select(t1.c.id, t2.c.id)
+            .select_from(t1.join(t2, sa.true()))
+            .where(sa.and_(t1.c.id >= 2, t2.c.id <= 3))
+            .order_by(t1.c.id)
+        )
+        rows = conn.execute(stmt).all()
+
+    assert rows == [(2, 2), (2, 3), (3, 2), (3, 3)]
+    engine.dispose()
+
+
+def test_e2e_cross_join_select_star(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    t1 = Table("t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String))
+    t2 = Table("t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String))
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(t1), [{"id": 1, "val1": "a1"}, {"id": 2, "val1": "a2"}])
+        conn.execute(insert(t2), [{"id": 10, "val2": "b10"}, {"id": 20, "val2": "b20"}])
+
+    with engine.connect() as conn:
+        stmt = select(t1, t2).select_from(t1.join(t2, sa.true()))
+        rows = conn.execute(stmt).all()
+
+    assert set(rows) == {
+        (1, "a1", 10, "b10"),
+        (1, "a1", 20, "b20"),
+        (2, "a2", 10, "b10"),
+        (2, "a2", 20, "b20"),
+    }
     engine.dispose()
 
 
@@ -1963,7 +2090,10 @@ def test_e2e_select_star_description_columns(tmp_path) -> None:
             )
         )
         result = conn.execute(stmt)
-        col_names = [desc[0] for desc in result.cursor.description]
+        cursor = result.cursor
+        assert cursor is not None
+        assert cursor.description is not None
+        col_names = [desc[0] for desc in cursor.description]
         # SA compiles to: SELECT * FROM users JOIN orders ON users.id = orders.user_id
         # excel-dbapi expands * using table names as source refs
         assert col_names == [
@@ -2009,7 +2139,10 @@ def test_e2e_select_star_empty_result_has_description(tmp_path) -> None:
         )
         result = conn.execute(stmt)
         # Check description BEFORE consuming rows — SA closes cursor after .all()
-        desc = result.cursor.description
+        cursor = result.cursor
+        assert cursor is not None
+        assert cursor.description is not None
+        desc = cursor.description
         assert [d[0] for d in desc] == [
             "users.id",
             "users.name",

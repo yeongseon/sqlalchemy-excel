@@ -14,7 +14,7 @@ Supported:
 
     Rejected (raises CompileError):
     CTEs, window functions, RETURNING, FOR UPDATE, NOT IN,
-    FULL OUTER JOIN, CROSS JOIN, NATURAL JOIN, non-equality/OR/non-column ON clauses
+    NATURAL JOIN, non-equality/OR/non-column ON clauses
 
     Partially supported:
     non-correlated subqueries in WHERE ... IN (SELECT single_col FROM table [WHERE ...])
@@ -71,11 +71,23 @@ class ExcelCompiler(compiler.SQLCompiler):
     _has_join: bool = False
 
     @staticmethod
+    def _is_true_onclause(onclause: Any) -> bool:
+        node = onclause
+        while node is not None:
+            visit_name = getattr(node, "__visit_name__", None)
+            if visit_name == "true":
+                return True
+            if visit_name in {"grouping", "unary"}:
+                node = getattr(node, "element", None)
+                continue
+            return False
+        return False
+
+    @staticmethod
     def _validate_join_tree(join: Join) -> None:
         """Validate a Join tree against excel-dbapi constraints.
 
         Rejects:
-        - FULL OUTER JOIN
         - Non-equality ON clauses (only col = col and AND-combined equalities allowed)
         - Non-column operands in ON (literals, functions, arithmetic)
         - Same-source ON comparisons (both operands from same table)
@@ -85,18 +97,14 @@ class ExcelCompiler(compiler.SQLCompiler):
         if isinstance(join.right, Join):
             ExcelCompiler._validate_join_tree(join.right)
 
-        # 2. Reject FULL OUTER JOIN
-        if join.full:
-            raise exc.CompileError(
-                "Excel dialect does not support FULL OUTER JOIN"
-            )
-
-        # 3. Validate ON clause structure: only equality comparisons allowed
         onclause = join.onclause
         if onclause is None:
             raise exc.CompileError(
                 "Excel dialect requires an ON clause for JOIN"
             )
+
+        if ExcelCompiler._is_true_onclause(onclause) and not join.full and not join.isouter:
+            return
 
         def _collect_tables(from_clause: Any) -> set[Any]:
             if isinstance(from_clause, Join):
@@ -149,7 +157,6 @@ class ExcelCompiler(compiler.SQLCompiler):
             if visit_name == "grouping":
                 _check_on_clause(clause.element)
                 return
-            # Anything else (true(), unary, etc.) is unsupported
             raise exc.CompileError(
                 "Excel dialect only supports equality comparisons in JOIN ON clause"
             )
@@ -355,6 +362,31 @@ class ExcelCompiler(compiler.SQLCompiler):
     ) -> str:
         self._has_join = True
         self._validate_join_tree(join)
+
+        if (
+            join.onclause is not None
+            and self._is_true_onclause(join.onclause)
+            and not join.full
+            and not join.isouter
+        ):
+            left = str(
+                join.left._compiler_dispatch(
+                    self,
+                    asfrom=True,
+                    from_linter=from_linter,
+                    **kwargs,
+                )
+            )
+            right = str(
+                join.right._compiler_dispatch(
+                    self,
+                    asfrom=True,
+                    from_linter=from_linter,
+                    **kwargs,
+                )
+            )
+            return left + " CROSS JOIN " + right
+
         visit_join = cast("Callable[..., str]", super().visit_join)
         return str(
             visit_join(join, asfrom=asfrom, from_linter=from_linter, **kwargs)
