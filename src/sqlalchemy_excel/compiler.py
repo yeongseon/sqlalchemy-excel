@@ -566,8 +566,6 @@ class ExcelCompiler(compiler.SQLCompiler):
         compound_index: Any = None,
         **kwargs: Any,
     ) -> str:
-        import re
-
         visit_compound_select = cast(
             "Callable[..., str]", super().visit_compound_select
         )
@@ -580,27 +578,62 @@ class ExcelCompiler(compiler.SQLCompiler):
 
         # SQLAlchemy parenthesizes branches that have their own ORDER BY,
         # e.g. "(SELECT id FROM t1 ORDER BY id DESC) UNION SELECT id FROM t2".
-        # The excel-dbapi parser cannot handle leading '('.  Strip the
-        # branch-local ORDER BY and its parentheses, since branch-level
-        # ordering is semantically meaningless for compound queries.
-        def _strip_paren_branch(m: Any) -> str:
-            inner = m.group(1)
-            # Remove branch-local ORDER BY clause
-            inner = re.sub(
-                r"\s+ORDER\s+BY\s+\S+(?:\s+(?:ASC|DESC))?",
-                "",
-                inner,
-                flags=re.IGNORECASE,
-            )
-            return inner
-
-        sql = re.sub(
-            r"\(\s*(SELECT\b.*?)\s*\)",
-            _strip_paren_branch,
-            sql,
-            flags=re.IGNORECASE | re.DOTALL,
-        )
+        # The excel-dbapi parser cannot handle leading '('.
+        # Strip branch-local ORDER BY and its wrapping parentheses, but use
+        # balanced-paren matching so inner parens (WHERE id IN (...),
+        # function calls, IN (SELECT ...) subqueries) are NOT corrupted.
+        sql = self._strip_compound_branch_parens(sql)
         return sql
+
+    @staticmethod
+    def _strip_compound_branch_parens(sql: str) -> str:
+        """Strip outermost balanced parens that wrap compound branches.
+
+        Only removes parentheses whose balanced content starts with SELECT
+        (i.e. a compound branch wrapper).  Inner parentheses such as
+        ``WHERE id IN (1, 2)`` or ``IN (SELECT ...)`` subqueries are
+        preserved because they are nested inside the branch, not at the
+        top level.
+        """
+        import re
+
+        result: list[str] = []
+        i = 0
+        length = len(sql)
+
+        while i < length:
+            if sql[i] == "(":
+                # Find matching ')' using balanced counting.
+                depth = 1
+                j = i + 1
+                while j < length and depth > 0:
+                    if sql[j] == "(":
+                        depth += 1
+                    elif sql[j] == ")":
+                        depth -= 1
+                    j += 1
+                # j is one past the matching ')'.
+                inner = sql[i + 1 : j - 1].strip()
+
+                if inner.upper().startswith("SELECT"):
+                    # This is a branch wrapper.  Strip branch-local
+                    # ORDER BY (semantically meaningless for compound).
+                    inner = re.sub(
+                        r"\s+ORDER\s+BY\s+\S+(?:\s+(?:ASC|DESC))?",
+                        "",
+                        inner,
+                        flags=re.IGNORECASE,
+                    )
+                    result.append(inner)
+                else:
+                    # Not a branch wrapper — preserve as-is.
+                    result.append(sql[i:j])
+                i = j
+            else:
+                result.append(sql[i])
+                i += 1
+
+        return "".join(result)
 
     def visit_over(
         self,

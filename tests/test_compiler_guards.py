@@ -1073,3 +1073,96 @@ def test_compound_outer_order_by_with_limit(tmp_xlsx: str) -> None:
     assert "LIMIT" in sql
 
     engine.dispose()
+
+
+def test_compound_preserves_in_list_parens(tmp_xlsx: str) -> None:
+    """Compound branch with WHERE id IN (1, 2) preserves inner parens."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    sub1 = select(users.c.id).where(users.c.id.in_([1, 2])).order_by(users.c.id.desc())
+    sub2 = select(users.c.id)
+    stmt = sa.union(sub1, sub2)
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    # Branch-local ORDER BY should be stripped and outer parens removed,
+    # but the IN (...) parentheses MUST be preserved.
+    assert "IN (" in sql or "IN (__[POSTCOMPILE_id_1])" in sql
+    # No bare parenthesized SELECT at the top level.
+    assert not sql.startswith("(SELECT")
+
+    engine.dispose()
+
+
+def test_compound_preserves_function_call_parens(tmp_xlsx: str) -> None:
+    """Compound branch with COUNT(*) preserves function-call parens."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    sub1 = select(func.count(users.c.id)).order_by(func.count(users.c.id).desc())
+    sub2 = select(func.count(users.c.id))
+    stmt = sa.union(sub1, sub2)
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    # Function-call parens must be preserved.
+    assert "count(" in sql.lower()
+    # No bare top-level paren wrapping a branch.
+    assert not sql.startswith("(SELECT")
+
+    engine.dispose()
+
+
+def test_compound_preserves_subquery_in_where(tmp_xlsx: str) -> None:
+    """Compound branch with WHERE id IN (SELECT ...) preserves subquery parens."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    subq = select(orders.c.user_id).scalar_subquery()
+    sub1 = select(users.c.id).where(users.c.id.in_(subq)).order_by(users.c.id.desc())
+    sub2 = select(users.c.id)
+    stmt = sa.union(sub1, sub2)
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    # The IN (SELECT ...) subquery must be preserved.
+    assert "IN (SELECT" in sql
+    # Branch-local ORDER BY should be stripped.
+    # The outer paren wrapping the branch should be removed.
+    assert not sql.startswith("(SELECT")
+
+    engine.dispose()
+
+
+def test_strip_compound_branch_parens_unit() -> None:
+    """Unit test for _strip_compound_branch_parens with various paren shapes."""
+    from sqlalchemy_excel.compiler import ExcelCompiler
+
+    # Simple branch wrapper is stripped.
+    assert ExcelCompiler._strip_compound_branch_parens(
+        "(SELECT id FROM t1 ORDER BY id DESC) UNION SELECT id FROM t2"
+    ) == "SELECT id FROM t1 UNION SELECT id FROM t2"
+
+    # Inner IN (...) is preserved even when branch is wrapped.
+    result = ExcelCompiler._strip_compound_branch_parens(
+        "(SELECT id FROM t1 WHERE id IN (1, 2) ORDER BY id DESC) UNION SELECT id FROM t2"
+    )
+    assert "IN (1, 2)" in result
+    assert not result.startswith("(")
+    assert "ORDER BY" not in result
+
+    # Inner IN (SELECT ...) subquery is preserved.
+    result = ExcelCompiler._strip_compound_branch_parens(
+        "(SELECT id FROM t1 WHERE id IN (SELECT user_id FROM orders) ORDER BY id DESC) UNION SELECT id FROM t2"
+    )
+    assert "IN (SELECT user_id FROM orders)" in result
+    assert not result.startswith("(")
+    assert "ORDER BY" not in result
+
+    # Non-branch parens (e.g. standalone IN list) are untouched.
+    assert ExcelCompiler._strip_compound_branch_parens(
+        "SELECT id FROM t1 WHERE id IN (1, 2) UNION SELECT id FROM t2"
+    ) == "SELECT id FROM t1 WHERE id IN (1, 2) UNION SELECT id FROM t2"
+
+    # No parens at all — passthrough.
+    assert ExcelCompiler._strip_compound_branch_parens(
+        "SELECT id FROM t1 UNION SELECT id FROM t2"
+    ) == "SELECT id FROM t1 UNION SELECT id FROM t2"
