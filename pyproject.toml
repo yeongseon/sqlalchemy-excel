@@ -29,11 +29,11 @@ classifiers = [
 
 dependencies = [
     "sqlalchemy>=2.0",
-    "excel-dbapi>=0.4.0",
+    "excel-dbapi>=0.4.1",
 ]
 
 [project.optional-dependencies]
-graph = ["excel-dbapi[graph]>=0.4.0"]
+graph = ["excel-dbapi[graph]>=0.4.1"]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
