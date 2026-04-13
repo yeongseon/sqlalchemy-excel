@@ -271,7 +271,7 @@ def test_e2e_create_and_drop_all_lifecycle(tmp_path) -> None:
     engine.dispose()
 
 
-def test_e2e_rollback_is_silent_noop_and_data_persists(tmp_path) -> None:
+def test_e2e_rollback_reverts_uncommitted_insert(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
     users = _users_table(metadata)
@@ -283,7 +283,35 @@ def test_e2e_rollback_is_silent_noop_and_data_persists(tmp_path) -> None:
 
     with engine.connect() as conn:
         rows = conn.execute(select(users)).all()
-        assert rows == [(1, "Alice", 30)]
+        assert rows == []
+
+    engine.dispose()
+
+
+def test_e2e_rollback_reverts_insert_update_delete(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+            ],
+        )
+
+    with engine.connect() as conn:
+        conn.execute(insert(users).values(id=3, name="Charlie", age=40))
+        conn.execute(update(users).where(users.c.id == 1).values(age=99))
+        conn.execute(delete(users).where(users.c.id == 2))
+        conn.rollback()
+
+    with engine.connect() as conn:
+        rows = conn.execute(select(users).order_by(users.c.id)).all()
+        assert rows == [(1, "Alice", 30), (2, "Bob", 25)]
 
     engine.dispose()
 

@@ -224,9 +224,20 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
         dbapi_connection.commit()
 
     def do_rollback(self, dbapi_connection: Any) -> None:
-        """Rollback is not supported with autocommit=False in a meaningful way
-        for Excel files. We silently ignore it to avoid crashes during
-        connection pool cleanup."""
+        """Rollback via the DB-API driver's snapshot/restore implementation.
+
+        The excel-dbapi openpyxl backend implements transactional rollback by
+        restoring the latest committed snapshot. Some non-transactional
+        backends (for example Graph/autocommit connections) raise
+        ``NotSupportedError``; we treat that as a no-op so pool reset does not
+        fail on connection return.
+        """
+        from excel_dbapi.exceptions import NotSupportedError
+
+        try:
+            dbapi_connection.rollback()
+        except NotSupportedError:
+            pass
 
     def do_close(self, dbapi_connection: Any) -> None:
         """Close the underlying excel-dbapi connection."""
