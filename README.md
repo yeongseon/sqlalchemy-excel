@@ -13,6 +13,9 @@
 SQLAlchemy dialect for Excel files — use Excel worksheets as database tables.
 This dialect supports CRUD, ORM mapping, aggregations, and constrained JOINs.
 
+Current release: `0.5.4` (requires `excel-dbapi>=0.4.1,<1.0`).
+See `docs/COMPATIBILITY.md` for version pairing and migration guidance.
+
 ## Limitations (Read First)
 
 Before writing any code, understand the dialect's capabilities and limits:

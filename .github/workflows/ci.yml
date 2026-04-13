@@ -33,6 +33,10 @@ jobs:
           fi
           pip install -e ".[dev,graph]"
 
+      - name: Check version/doc sync
+        run: |
+          python scripts/check_version_sync.py
+
       - name: Lint
         run: |
           ruff check .
