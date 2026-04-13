@@ -31,8 +31,8 @@ Before writing any code, understand the dialect's capabilities and limits:
 | GROUP BY / HAVING | ✅ |
 | Aggregate functions (COUNT, SUM, AVG, MIN, MAX) | ✅ |
 | Subqueries in WHERE ... IN | ✅ (non-correlated only) |
-| INNER / LEFT JOIN (single, equality ON) | ✅ (constrained) |
-| **Chained JOINs** (3+ tables) | ❌ |
+| INNER / LEFT / RIGHT JOIN (equality ON) | ✅ (constrained) |
+| Chained JOINs (3+ tables) | ✅ (constrained) |
 | **FULL OUTER JOIN** | ❌ |
 | **CTEs / UNION / INTERSECT / EXCEPT** | ❌ |
 | **Window functions (OVER)** | ❌ |

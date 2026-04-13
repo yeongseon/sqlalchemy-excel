@@ -655,8 +655,7 @@ def test_e2e_join_with_as_alias(tmp_path) -> None:
     engine.dispose()
 
 
-def test_e2e_chained_join_rejected_at_compile_time(tmp_path) -> None:
-    """Chained JOIN (three tables) raises CompileError, not a later DBAPI error."""
+def test_e2e_chained_join_three_tables(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
     users = _users_table(metadata)
@@ -672,17 +671,59 @@ def test_e2e_chained_join_rejected_at_compile_time(tmp_path) -> None:
         metadata,
         Column("id", Integer, primary_key=True),
         Column("order_id", Integer),
+        Column("sku", String),
     )
     metadata.create_all(engine)
 
-    stmt = (
-        select(users.c.name)
-        .join(orders, users.c.id == orders.c.user_id)
-        .join(items, orders.c.id == items.c.order_id)
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(orders).values(id=10, user_id=1, amount=100))
+        conn.execute(insert(orders).values(id=11, user_id=2, amount=200))
+        conn.execute(insert(items).values(id=100, order_id=10, sku="A-1"))
+        conn.execute(insert(items).values(id=101, order_id=11, sku="B-1"))
+
+    with engine.connect() as conn:
+        stmt = (
+            select(users.c.name, orders.c.amount, items.c.sku)
+            .join(orders, users.c.id == orders.c.user_id)
+            .join(items, orders.c.id == items.c.order_id)
+            .where(orders.c.amount >= 100)
+            .order_by(orders.c.amount)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [("Alice", 100, "A-1"), ("Bob", 200, "B-1")]
+
+    engine.dispose()
+
+
+def test_e2e_right_join_via_swapped_left_join(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
     )
-    with pytest.raises(exc.CompileError, match="only one JOIN per query"):
-        with engine.connect() as conn:
-            conn.execute(stmt).all()
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
+        conn.execute(insert(orders).values(id=2, user_id=999, amount=999))
+
+    with engine.connect() as conn:
+        stmt = (
+            select(orders.c.id, users.c.name)
+            .select_from(orders.join(users, users.c.id == orders.c.user_id, isouter=True))
+            .order_by(orders.c.id)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [(1, "Alice"), (2, None)]
 
     engine.dispose()
 

@@ -14,7 +14,7 @@ Supported:
 
     Rejected (raises CompileError):
     CTEs, UNION/INTERSECT/EXCEPT, window functions, RETURNING, FOR UPDATE, NOT IN,
-    FULL OUTER JOIN, chained JOINs, non-equality/OR/non-column ON clauses
+    FULL OUTER JOIN, non-equality/OR/non-column ON clauses
 
     Partially supported:
     non-correlated subqueries in WHERE ... IN (SELECT single_col FROM table [WHERE ...])
@@ -75,17 +75,15 @@ class ExcelCompiler(compiler.SQLCompiler):
         """Validate a Join tree against excel-dbapi constraints.
 
         Rejects:
-        - Chained joins (more than one JOIN node in the tree)
         - FULL OUTER JOIN
         - Non-equality ON clauses (only col = col and AND-combined equalities allowed)
         - Non-column operands in ON (literals, functions, arithmetic)
         - Same-source ON comparisons (both operands from same table)
         """
-        # 1. Reject chained joins: if either side is itself a Join, we have >1 join
-        if isinstance(join.left, Join) or isinstance(join.right, Join):
-            raise exc.CompileError(
-                "Excel dialect supports only one JOIN per query"
-            )
+        if isinstance(join.left, Join):
+            ExcelCompiler._validate_join_tree(join.left)
+        if isinstance(join.right, Join):
+            ExcelCompiler._validate_join_tree(join.right)
 
         # 2. Reject FULL OUTER JOIN
         if join.full:
@@ -99,8 +97,14 @@ class ExcelCompiler(compiler.SQLCompiler):
             raise exc.CompileError(
                 "Excel dialect requires an ON clause for JOIN"
             )
-        left_source = join.left
-        right_source = join.right
+
+        def _collect_tables(from_clause: Any) -> set[Any]:
+            if isinstance(from_clause, Join):
+                return _collect_tables(from_clause.left) | _collect_tables(from_clause.right)
+            return {from_clause}
+
+        left_tables = _collect_tables(join.left)
+        right_tables = _collect_tables(join.right)
 
         def _check_on_clause(clause: Any) -> None:
             """Recursively validate that ON clause contains only cross-source column equalities."""
@@ -120,11 +124,13 @@ class ExcelCompiler(compiler.SQLCompiler):
                 # Validate cross-source: one column from each side of the join
                 left_tbl = getattr(clause.left, "table", None)
                 right_tbl = getattr(clause.right, "table", None)
-                left_from_left = left_tbl is left_source
-                left_from_right = left_tbl is right_source
-                right_from_left = right_tbl is left_source
-                right_from_right = right_tbl is right_source
-                cross = (left_from_left and right_from_right) or (left_from_right and right_from_left)
+                left_from_left = left_tbl in left_tables
+                left_from_right = left_tbl in right_tables
+                right_from_left = right_tbl in left_tables
+                right_from_right = right_tbl in right_tables
+                cross = (left_from_left and right_from_right) or (
+                    left_from_right and right_from_left
+                )
                 if not cross:
                     raise exc.CompileError(
                         "Excel dialect requires ON clause to compare columns from different join sources"
@@ -159,8 +165,16 @@ class ExcelCompiler(compiler.SQLCompiler):
         lateral: Any,
         compound_index: Any,
     ) -> Any:
-        froms = super()._setup_select_stack(
-            select, compile_state, entry, asfrom, lateral, compound_index
+        setup_select_stack = cast(
+            "Callable[..., Any]", super()._setup_select_stack
+        )
+        froms = setup_select_stack(
+            select,
+            compile_state,
+            entry,
+            asfrom,
+            lateral,
+            compound_index,
         )
         for from_clause in froms:
             if isinstance(from_clause, Join):
@@ -313,7 +327,8 @@ class ExcelCompiler(compiler.SQLCompiler):
         *args: Any,
         **kw: Any,
     ) -> str:
-        return str(super().visit_insert(insert_stmt, *args, **kw))
+        visit_insert = cast("Callable[..., str]", super().visit_insert)
+        return str(visit_insert(insert_stmt, *args, **kw))
 
     # ── Unsupported feature guards ─────────────────────────
 
@@ -326,10 +341,9 @@ class ExcelCompiler(compiler.SQLCompiler):
     ) -> str:
         self._has_join = True
         self._validate_join_tree(join)
+        visit_join = cast("Callable[..., str]", super().visit_join)
         return str(
-            super().visit_join(
-                join, asfrom=asfrom, from_linter=from_linter, **kwargs
-            )
+            visit_join(join, asfrom=asfrom, from_linter=from_linter, **kwargs)
         )
 
     def group_by_clause(self, select: Any, **kw: Any) -> str:

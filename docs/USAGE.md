@@ -149,6 +149,44 @@ with Session(engine) as session:
     users = session.scalars(stmt).all()
 ```
 
+### JOINs (including chained and RIGHT-join shape)
+
+```python
+from sqlalchemy import Column, Integer, MetaData, String, Table, select
+
+metadata = MetaData()
+users = Table(
+    "users",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String),
+)
+orders = Table(
+    "orders",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("user_id", Integer),
+)
+items = Table(
+    "items",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("order_id", Integer),
+)
+
+# Chained join (users -> orders -> items)
+stmt = (
+    select(users.c.name, orders.c.id, items.c.id)
+    .join(orders, users.c.id == orders.c.user_id)
+    .join(items, orders.c.id == items.c.order_id)
+)
+
+# RIGHT JOIN shape (SQLAlchemy represents this as swapped LEFT OUTER JOIN)
+right_join_shape = select(orders.c.id, users.c.name).select_from(
+    orders.join(users, users.c.id == orders.c.user_id, isouter=True)
+)
+```
+
 ## Insert, Update, and Delete
 
 ### Insert
@@ -270,7 +308,7 @@ sqlalchemy-excel maps SQLAlchemy types to Excel storage types:
 
 sqlalchemy-excel has some limitations due to the nature of Excel as a database:
 
-- **Constrained JOIN support**: Only single INNER/LEFT JOIN with equality ON clause (`t1.col = t2.col`). No chained JOINs, FULL OUTER JOIN, OR/non-equality ON clauses, or non-column operands.
+- **Constrained JOIN support**: INNER/LEFT/RIGHT join shapes and chained joins are supported with equality ON clauses (`t1.col = t2.col`). FULL OUTER JOIN, OR/non-equality ON clauses, and non-column operands are rejected.
 - **Non-correlated subqueries only**: Subqueries supported only in `WHERE ... IN (SELECT ...)`. No correlated, nested, or DML subqueries.
 - **No CTEs, UNION, INTERSECT, EXCEPT**: Only simple SELECT/INSERT/UPDATE/DELETE.
 - **No window functions**: `OVER` clause raises `CompileError`.

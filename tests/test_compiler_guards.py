@@ -558,8 +558,103 @@ def test_compiler_rejects_subquery_containing_join(tmp_xlsx: str) -> None:
     engine.dispose()
 
 
-def test_compiler_rejects_chained_joins(tmp_xlsx: str) -> None:
-    """Chained JOIN (more than one JOIN) should be rejected at compile time."""
+def test_compiler_accepts_chained_inner_joins(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+    admins = Table(
+        "admins",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+    )
+
+    stmt = (
+        select(users.c.name, admins.c.id)
+        .join(orders, users.c.id == orders.c.user_id)
+        .join(admins, users.c.id == admins.c.user_id)
+    )
+
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert sql.count("JOIN") == 2
+    assert "users.id = orders.user_id" in sql
+    assert "users.id = admins.user_id" in sql
+
+    engine.dispose()
+
+
+def test_compiler_accepts_chained_left_then_inner_join(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+    items = Table(
+        "items",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("order_id", Integer),
+    )
+
+    stmt = (
+        select(users.c.name, orders.c.id, items.c.id)
+        .join(orders, users.c.id == orders.c.user_id, isouter=True)
+        .join(items, orders.c.id == items.c.order_id)
+    )
+
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert "LEFT OUTER JOIN" in sql
+    assert sql.count("JOIN") == 2
+
+    engine.dispose()
+
+
+def test_compiler_right_join_compiles_via_swapped_left_join(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = select(orders.c.id, users.c.name).select_from(
+        orders.join(users, users.c.id == orders.c.user_id, isouter=True)
+    )
+
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert "LEFT OUTER JOIN" in sql
+    assert "orders.user_id = users.id" in sql or "users.id = orders.user_id" in sql
+
+    engine.dispose()
+
+
+def test_compiler_chained_join_with_where_and_order_by(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+    admins = Table(
+        "admins",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+    )
+
+    stmt = (
+        select(users.c.name, orders.c.id, admins.c.id)
+        .join(orders, users.c.id == orders.c.user_id)
+        .join(admins, users.c.id == admins.c.user_id)
+        .where(orders.c.id > 10)
+        .order_by(admins.c.id.desc())
+    )
+
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert sql.count("JOIN") == 2
+    assert "WHERE" in sql
+    assert "ORDER BY" in sql
+
+    engine.dispose()
+
+
+def test_compiler_rejects_group_by_with_chained_join(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, orders = _build_tables(metadata)
@@ -574,8 +669,33 @@ def test_compiler_rejects_chained_joins(tmp_xlsx: str) -> None:
         select(users.c.name)
         .join(orders, users.c.id == orders.c.user_id)
         .join(admins, users.c.id == admins.c.user_id)
+        .group_by(users.c.name)
     )
-    with pytest.raises(exc.CompileError, match="only one JOIN per query"):
+
+    with pytest.raises(exc.CompileError, match="GROUP BY with JOIN"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_invalid_outer_on_in_chained_join(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+    admins = Table(
+        "admins",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+    )
+
+    stmt = (
+        select(users.c.name)
+        .join(orders, users.c.id == orders.c.user_id)
+        .join(admins, users.c.id == users.c.id)
+    )
+
+    with pytest.raises(exc.CompileError, match="different join sources"):
         stmt.compile(dialect=engine.dialect)
 
     engine.dispose()
@@ -591,6 +711,29 @@ def test_compiler_rejects_full_outer_join(tmp_xlsx: str) -> None:
         select(users.c.name, orders.c.user_id)
         .join(orders, users.c.id == orders.c.user_id, full=True)
     )
+    with pytest.raises(exc.CompileError, match="FULL OUTER JOIN"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_full_outer_join_in_chain(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+    admins = Table(
+        "admins",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+    )
+
+    stmt = (
+        select(users.c.name)
+        .join(orders, users.c.id == orders.c.user_id)
+        .join(admins, users.c.id == admins.c.user_id, full=True)
+    )
+
     with pytest.raises(exc.CompileError, match="FULL OUTER JOIN"):
         stmt.compile(dialect=engine.dialect)
 
