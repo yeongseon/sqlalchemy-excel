@@ -1166,3 +1166,228 @@ def test_e2e_compound_mixed_operators(tmp_path) -> None:
             conn.execute(stmt)
 
     engine.dispose()
+
+
+# ===================================================================
+# Phase 10: NOT / Parenthesized WHERE / NOT IN / NOT LIKE / NOT BETWEEN
+# ===================================================================
+
+
+def _seed_phase10(engine: sa.engine.Engine, users: Table) -> None:
+    """Seed data for Phase 10 tests."""
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+                {"id": 3, "name": "Charlie", "age": 35},
+                {"id": 4, "name": "Diana", "age": 28},
+                {"id": 5, "name": "Eve", "age": 45},
+            ],
+        )
+
+
+def test_e2e_not_in_literals(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+    _seed_phase10(engine, users)
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(users.c.name).where(users.c.name.not_in(["Alice", "Bob"]))
+        ).all()
+        names = sorted(r[0] for r in rows)
+        assert names == ["Charlie", "Diana", "Eve"]
+
+    engine.dispose()
+
+
+def test_e2e_not_in_subquery(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    scores = Table(
+        "scores", metadata,
+        Column("user_id", Integer), Column("score", Integer),
+    )
+    metadata.create_all(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+                {"id": 3, "name": "Charlie", "age": 35},
+            ],
+        )
+        conn.execute(
+            insert(scores),
+            [{"user_id": 1, "score": 90}, {"user_id": 2, "score": 80}],
+        )
+
+    with engine.connect() as conn:
+        sub = select(scores.c.user_id)
+        rows = conn.execute(
+            select(users.c.name).where(users.c.id.not_in(sub))
+        ).all()
+        names = [r[0] for r in rows]
+        assert names == ["Charlie"]
+
+    engine.dispose()
+
+
+def test_e2e_not_like(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+    _seed_phase10(engine, users)
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(users.c.name).where(users.c.name.not_like("A%"))
+        ).all()
+        names = sorted(r[0] for r in rows)
+        assert names == ["Bob", "Charlie", "Diana", "Eve"]
+
+    engine.dispose()
+
+
+def test_e2e_not_between(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+    _seed_phase10(engine, users)
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(users.c.name).where(~users.c.age.between(26, 34))
+        ).all()
+        names = sorted(r[0] for r in rows)
+        # age NOT BETWEEN 26 AND 34: Bob(25), Charlie(35), Eve(45)
+        assert names == ["Bob", "Charlie", "Eve"]
+
+    engine.dispose()
+
+
+def test_e2e_parenthesized_or_and(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+    _seed_phase10(engine, users)
+
+    with engine.connect() as conn:
+        # (age < 30 OR age > 40) AND name != 'Eve'
+        rows = conn.execute(
+            select(users.c.name).where(
+                sa.and_(
+                    sa.or_(users.c.age < 30, users.c.age > 40),
+                    users.c.name != "Eve",
+                )
+            )
+        ).all()
+        names = sorted(r[0] for r in rows)
+        # age<30: Bob(25), Diana(28); age>40: Eve(45)
+        # AND name != 'Eve': Bob(25), Diana(28)
+        assert names == ["Bob", "Diana"]
+
+    engine.dispose()
+
+
+def test_e2e_not_operator(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+    _seed_phase10(engine, users)
+
+    with engine.connect() as conn:
+        # NOT (age >= 30)
+        rows = conn.execute(
+            select(users.c.name).where(~(users.c.age >= 30))
+        ).all()
+        names = sorted(r[0] for r in rows)
+        # NOT age>=30: Bob(25), Diana(28)
+        assert names == ["Bob", "Diana"]
+
+    engine.dispose()
+
+
+def test_e2e_parenthesized_complex(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+    _seed_phase10(engine, users)
+
+    with engine.connect() as conn:
+        # (name NOT LIKE 'A%' AND age >= 30) OR name = 'Eve'
+        rows = conn.execute(
+            select(users.c.name).where(
+                sa.or_(
+                    sa.and_(
+                        users.c.name.not_like("A%"),
+                        users.c.age >= 30,
+                    ),
+                    users.c.name == "Eve",
+                )
+            )
+        ).all()
+        names = sorted(r[0] for r in rows)
+        # NOT LIKE 'A%' AND age>=30: Charlie(35), Eve(45)
+        # OR name='Eve': already included
+        assert names == ["Charlie", "Eve"]
+
+    engine.dispose()
+
+
+def test_e2e_update_with_not_in(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+    _seed_phase10(engine, users)
+
+    with engine.begin() as conn:
+        conn.execute(
+            update(users)
+            .where(users.c.name.not_in(["Alice", "Bob"]))
+            .values(age=99)
+        )
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(users.c.name).where(users.c.age == 99)
+        ).all()
+        names = sorted(r[0] for r in rows)
+        assert names == ["Charlie", "Diana", "Eve"]
+
+    engine.dispose()
+
+
+def test_e2e_delete_with_not_between(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+    _seed_phase10(engine, users)
+
+    with engine.begin() as conn:
+        conn.execute(
+            delete(users).where(~users.c.age.between(25, 35))
+        )
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(users.c.name).order_by(users.c.id)
+        ).all()
+        names = [r[0] for r in rows]
+        # Kept: Bob(25), Alice(30), Charlie(35), Diana(28)
+        assert sorted(names) == ["Alice", "Bob", "Charlie", "Diana"]
+
+    engine.dispose()

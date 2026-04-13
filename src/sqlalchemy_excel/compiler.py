@@ -512,7 +512,7 @@ class ExcelCompiler(compiler.SQLCompiler):
         **kw: Any,
     ) -> str:
         binary_operator = override_operator or binary.operator
-        in_context = binary_operator is operators.in_op
+        in_context = binary_operator is operators.in_op or binary_operator is operators.not_in_op
         visit_binary = cast("Callable[..., str]", super().visit_binary)
         if not in_context:
             return str(
@@ -541,8 +541,6 @@ class ExcelCompiler(compiler.SQLCompiler):
         finally:
             self._in_in_clause = False
 
-    def visit_not_in_op_binary(self, binary: Any, operator: Any, **kw: Any) -> str:
-        raise exc.CompileError("Excel dialect does not support NOT IN")
 
     def returning_clause(
         self,
