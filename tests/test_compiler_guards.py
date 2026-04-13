@@ -1198,6 +1198,23 @@ def test_strip_compound_branch_parens_unit() -> None:
     # The trailing branch-level ORDER BY id DESC should be gone.
     assert result.endswith("UNION SELECT id FROM t2")
 
+    # Branch-local ORDER BY stripped but LIMIT preserved.
+    result = ExcelCompiler._strip_compound_branch_parens(
+        "(SELECT id FROM t1 ORDER BY id DESC LIMIT 5) UNION SELECT id FROM t2"
+    )
+    assert "ORDER BY" not in result
+    assert "LIMIT 5" in result
+    assert not result.startswith("(")
+
+    # Branch-local ORDER BY stripped but LIMIT + OFFSET preserved.
+    result = ExcelCompiler._strip_compound_branch_parens(
+        "(SELECT id FROM t1 ORDER BY id DESC LIMIT 5 OFFSET 2) UNION SELECT id FROM t2"
+    )
+    assert "ORDER BY" not in result
+    assert "LIMIT 5" in result
+    assert "OFFSET 2" in result
+    assert not result.startswith("(")
+
 
 def test_compound_unwrapped_in_subquery_preserved(tmp_xlsx: str) -> None:
     """Unwrapped branch with IN (SELECT ...) preserves subquery parens."""
@@ -1214,3 +1231,83 @@ def test_compound_unwrapped_in_subquery_preserved(tmp_xlsx: str) -> None:
     assert "IN (SELECT" in sql
 
     engine.dispose()
+
+
+def test_compound_branch_limit_preserved(tmp_xlsx: str) -> None:
+    """Branch-local ORDER BY is stripped but LIMIT is preserved."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    sub1 = select(users.c.id).order_by(users.c.id.desc()).limit(1)
+    sub2 = select(users.c.id)
+    stmt = sa.union(sub1, sub2)
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    # ORDER BY must be stripped, but LIMIT must be preserved.
+    assert "ORDER BY" not in sql
+    assert "LIMIT" in sql
+    assert not sql.startswith("(SELECT")
+
+    engine.dispose()
+
+
+def test_compound_branch_limit_offset_preserved(tmp_xlsx: str) -> None:
+    """Branch-local ORDER BY is stripped but LIMIT + OFFSET are preserved."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    sub1 = select(users.c.id).order_by(users.c.id.desc()).limit(2).offset(1)
+    sub2 = select(users.c.id)
+    stmt = sa.union(sub1, sub2)
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    # ORDER BY must be stripped, but LIMIT and OFFSET must be preserved.
+    assert "ORDER BY" not in sql
+    assert "LIMIT" in sql
+    assert "OFFSET" in sql
+    assert not sql.startswith("(SELECT")
+
+    engine.dispose()
+
+
+def test_strip_top_level_order_by_preserves_limit() -> None:
+    """Unit test: _strip_top_level_order_by keeps LIMIT/OFFSET after ORDER BY."""
+    from sqlalchemy_excel.compiler import ExcelCompiler
+
+    # ORDER BY stripped, LIMIT preserved.
+    result = ExcelCompiler._strip_top_level_order_by(
+        "SELECT id FROM t ORDER BY id DESC LIMIT 5"
+    )
+    assert result == "SELECT id FROM t LIMIT 5"
+
+    # ORDER BY stripped, LIMIT + OFFSET preserved.
+    result = ExcelCompiler._strip_top_level_order_by(
+        "SELECT id FROM t ORDER BY id DESC LIMIT 5 OFFSET 2"
+    )
+    assert result == "SELECT id FROM t LIMIT 5 OFFSET 2"
+
+    # Only ORDER BY, no LIMIT — everything after ORDER BY removed.
+    result = ExcelCompiler._strip_top_level_order_by(
+        "SELECT id FROM t ORDER BY id DESC"
+    )
+    assert result == "SELECT id FROM t"
+
+    # Nested subquery ORDER BY preserved, outer stripped with LIMIT kept.
+    result = ExcelCompiler._strip_top_level_order_by(
+        "SELECT id FROM t WHERE id IN (SELECT x FROM t2 ORDER BY x) ORDER BY id DESC LIMIT 3"
+    )
+    assert "IN (SELECT x FROM t2 ORDER BY x)" in result
+    assert "ORDER BY id" not in result
+    assert "LIMIT 3" in result
+
+    # No ORDER BY — passthrough.
+    result = ExcelCompiler._strip_top_level_order_by(
+        "SELECT id FROM t LIMIT 5"
+    )
+    assert result == "SELECT id FROM t LIMIT 5"
+
+    # LIMIT with placeholder.
+    result = ExcelCompiler._strip_top_level_order_by(
+        "SELECT id FROM t ORDER BY id DESC LIMIT ? OFFSET ?"
+    )
+    assert result == "SELECT id FROM t LIMIT ? OFFSET ?"

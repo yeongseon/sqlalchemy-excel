@@ -657,9 +657,11 @@ class ExcelCompiler(compiler.SQLCompiler):
         """Remove the last top-level ORDER BY from *sql*.
 
         Walks the string tracking parenthesis depth.  Only an ``ORDER BY``
-        token found at depth 0 is treated as branch-local and stripped
-        (along with everything after it).  An ``ORDER BY`` inside any
-        parenthesized group (e.g. a subquery) is left untouched.
+        token found at depth 0 is treated as branch-local and stripped.
+        Any subsequent ``LIMIT`` or ``OFFSET`` at depth 0 is preserved so
+        that ``ORDER BY x LIMIT n`` becomes ``LIMIT n``.
+        An ``ORDER BY`` inside any parenthesized group (e.g. a subquery)
+        is left untouched.
         """
         upper = sql.upper()
         depth = 0
@@ -684,9 +686,42 @@ class ExcelCompiler(compiler.SQLCompiler):
                     if pos == 0 or not upper[pos - 1].isalnum():
                         last_top_order = pos
             search_start = pos + 5
-        if last_top_order is not None:
-            return sql[:last_top_order].rstrip()
-        return sql
+        if last_top_order is None:
+            return sql
+
+        # Find where the ORDER BY clause ends: at the next top-level
+        # LIMIT or OFFSET keyword, or at end-of-string.
+        order_end = len(sql)
+        od = 0  # paren depth from last_top_order onward
+        scan = last_top_order
+        for keyword in ("LIMIT", "OFFSET"):
+            od = 0
+            scan2 = last_top_order
+            while True:
+                kp = upper.find(keyword, scan2)
+                if kp == -1:
+                    break
+                # Update paren depth up to this position.
+                for k2 in range(scan2, kp):
+                    if sql[k2] == "(":
+                        od += 1
+                    elif sql[k2] == ")":
+                        od -= 1
+                if od == 0:
+                    # Verify it's not part of an identifier.
+                    if kp == 0 or not upper[kp - 1].isalnum():
+                        after_kw = kp + len(keyword)
+                        if after_kw >= len(upper) or not upper[after_kw].isalnum():
+                            if kp < order_end:
+                                order_end = kp
+                            break
+                scan2 = kp + len(keyword)
+
+        before = sql[:last_top_order].rstrip()
+        after = sql[order_end:]
+        if after.strip():
+            return before + " " + after.lstrip()
+        return before
 
     def visit_over(
         self,
