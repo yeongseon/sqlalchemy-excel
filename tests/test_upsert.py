@@ -256,3 +256,29 @@ def test_missing_index_elements_do_update(items_table):
 
     with pytest.raises(ValueError, match="requires index_elements"):
         stmt.on_conflict_do_update(set_={"age": 1})
+
+
+def test_index_where_rejected_do_update(items_table):
+    """index_where must be rejected on do_update too, not just do_nothing."""
+    stmt = insert(items_table).values(id=1, name="Alice", age=30, code="A")
+
+    with pytest.raises(ValueError, match="does not support index_where"):
+        stmt.on_conflict_do_update(
+            index_elements=["id"],
+            set_={"age": 1},
+            index_where=items_table.c.id > 0,
+        )
+
+
+def test_foreign_table_column_key_rejected(items_table, composite_items_table):
+    """set_ keys from a different table must be rejected at compile time."""
+    stmt = insert(items_table).values(id=1, name="Alice", age=30, code="A")
+    upsert = stmt.on_conflict_do_update(
+        index_elements=["id"],
+        set_={composite_items_table.c.age: 99},
+    )
+    from sqlalchemy.exc import CompileError
+    from sqlalchemy_excel.dialect import ExcelDialect
+
+    with pytest.raises(CompileError, match="cannot be used as an ON CONFLICT"):
+        upsert.compile(dialect=ExcelDialect())

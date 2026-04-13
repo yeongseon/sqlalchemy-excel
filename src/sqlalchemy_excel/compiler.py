@@ -965,17 +965,25 @@ class ExcelCompiler(compiler.SQLCompiler):
         if set_parameters:
             from sqlalchemy import util as sa_util
 
-            table_name = getattr(
-                getattr(self.current_executable, "table", None),
-                "name",
-                "<unknown>",
-            )
+            insert_table = getattr(self.current_executable, "table", None)
+            insert_table_name = getattr(insert_table, "name", "<unknown>")
+
+            # Reject foreign-table Column keys that would silently
+            # retarget the assignment to the INSERT table
+            for k in list(set_parameters):
+                if hasattr(k, "table") and hasattr(k.table, "name"):
+                    if k.table.name != insert_table_name:
+                        raise exc.CompileError(
+                            "Column '%s' from table '%s' cannot be used as "
+                            "an ON CONFLICT DO UPDATE SET target for table '%s'"
+                            % (k.key, k.table.name, insert_table_name)
+                        )
 
             sa_util.warn(
                 "Additional column names not matching "
                 "any column keys in table '%s': %s"
                 % (
-                    table_name,
+                    insert_table_name,
                     (", ".join("'%s'" % c for c in set_parameters)),
                 )
             )
