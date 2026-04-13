@@ -149,10 +149,10 @@ with Session(engine) as session:
     users = session.scalars(stmt).all()
 ```
 
-### JOINs (including chained and RIGHT-join shape)
+### JOINs (including chained, RIGHT-join shape, FULL OUTER, and CROSS)
 
 ```python
-from sqlalchemy import Column, Integer, MetaData, String, Table, select
+from sqlalchemy import Column, Integer, MetaData, String, Table, select, true
 
 metadata = MetaData()
 users = Table(
@@ -185,6 +185,14 @@ stmt = (
 right_join_shape = select(orders.c.id, users.c.name).select_from(
     orders.join(users, users.c.id == orders.c.user_id, isouter=True)
 )
+
+# FULL OUTER JOIN
+full_outer = select(users.c.name, orders.c.id).select_from(
+    users.join(orders, users.c.id == orders.c.user_id, full=True)
+)
+
+# CROSS JOIN
+cross_join = select(users.c.id, orders.c.id).select_from(users.join(orders, true()))
 ```
 
 ### Compound Set Operations (UNION / INTERSECT / EXCEPT)
@@ -330,7 +338,7 @@ sqlalchemy-excel maps SQLAlchemy types to Excel storage types:
 
 sqlalchemy-excel has some limitations due to the nature of Excel as a database:
 
-- **Constrained JOIN support**: INNER/LEFT/RIGHT join shapes and chained joins are supported with equality ON clauses (`t1.col = t2.col`). FULL OUTER JOIN, OR/non-equality ON clauses, and non-column operands are rejected.
+- **Constrained JOIN support**: INNER/LEFT/RIGHT/FULL OUTER join shapes, CROSS JOIN, and chained joins are supported. `ON` clauses are limited to equality comparisons between columns from different join sources (`t1.col = t2.col`, `AND`-combined).
 - **Non-correlated subqueries only**: Subqueries supported in `WHERE ... IN (SELECT ...)` for SELECT, UPDATE, and DELETE. No correlated or nested subqueries.
 - **No CTEs**: CTE queries are not supported.
 - **No window functions**: `OVER` clause raises `CompileError`.

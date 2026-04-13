@@ -1,91 +1,56 @@
 # Project Roadmap
 
-> **Current version**: 0.4.0 · **Python**: 3.10+ · **Published**: [PyPI](https://pypi.org/project/sqlalchemy-excel/)
+> **Current version**: 0.5.4 · **Python**: 3.10+ · **Published**: [PyPI](https://pypi.org/project/sqlalchemy-excel/)
 
 ## Completed
 
-### v0.1.0 — Initial Release
+### Core SQL and ORM surface
 
-- SQLAlchemy 2.0 dialect implementation
-- ORM support with `DeclarativeBase`
-- Basic SQL: SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, DROP TABLE
-- WHERE clauses with comparison operators
-- ORDER BY and LIMIT
-- Type mapping for common SQLAlchemy types
-- Schema inspection (`get_table_names`, `get_columns`, `has_table`)
+- SQLAlchemy 2.x dialect implementation for local Excel files
+- ORM support with `DeclarativeBase`, `Session`, and mapper reflection paths used in tests
+- CRUD support: `SELECT`, `INSERT`, `UPDATE`, `DELETE`
+- DDL support: `CREATE TABLE`, `DROP TABLE`
+- Multi-row `INSERT ... VALUES` and `INSERT ... SELECT`
+- Inspector support: `get_table_names`, `get_columns`, `has_table`
 
-### v0.2.x — Dialect Rewrite & Quality
+### Query capabilities available today
 
-- Complete dialect architecture rewrite: `ExcelCompiler`, `ExcelDDLCompiler`, `ExcelTypeCompiler`
-- Enhanced operators: IN, BETWEEN, LIKE
-- Codecov integration for coverage tracking
-- mypy strict mode with full type safety
-- PyPI Trusted Publisher (OIDC) for secure releases
-- GitHub Actions CI/CD pipeline
+- Filtering/operators: `IN`, `BETWEEN`, `LIKE`
+- Aggregation: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`
+- `GROUP BY` and `HAVING`
+- `DISTINCT` (single-table queries)
+- Non-correlated subqueries in `WHERE ... IN` (for `SELECT`, `UPDATE`, `DELETE`)
+- Join surface: `INNER`, `LEFT`, `RIGHT` shape, `FULL OUTER`, `CROSS`, chained joins
+- Compound queries: `UNION`, `UNION ALL`, `INTERSECT`, `EXCEPT`
+- `CASE WHEN` expressions and arithmetic expressions
+- UPSERT via `ON CONFLICT DO NOTHING / DO UPDATE`
 
-### v0.3.x — Graph API & Remote Excel
+### Platform and quality
 
-- `ExcelGraphDialect` for remote Excel files via Microsoft Graph API
-- `excel+graph:///drive_id/item_id` URL scheme
-- Entry point `excel.graph` for SQLAlchemy dialect resolution
-- Optional dependency: `pip install sqlalchemy-excel[graph]`
-- URL percent-decoding for drive/item IDs with special characters
-- `readonly` query parameter forwarding to Graph backend
-- `supports_statement_cache = False` on both dialects
+- `ExcelGraphDialect` for Microsoft Graph-backed workbooks (`excel+graph:///drive_id/item_id`)
+- Strict mypy, ruff linting/formatting, and CI on supported Python versions
+- High test coverage across compiler, dialect, ORM, DML/DDL, reflection, and end-to-end flows
 
-### v0.4.0 — Stabilization (Current)
+## In Progress / Next
 
-- HAVING guard via `_compose_select_body` override (compile-time error instead of silent ignore)
-- End-to-end tests: CRUD round-trip, ORM Session, inspector reflection, DDL lifecycle, rollback no-op
-- Compiler guard tests for all unsupported SQL features
-- Type compiler full coverage tests
-- Reflection edge case tests
-- Test coverage: **98% (117 tests)**
-- README restructured: limitations-first layout, Graph API moved to experimental section
+- Expand documentation examples for advanced query shapes and ORM patterns
+- Continue hardening edge cases around SQLAlchemy compilation and parser interoperability
+- Improve release notes and compatibility guidance as excel-dbapi evolves
 
-## Future
+## Not Planned
 
-### Planned
+- Full ACID transactions
+- Concurrent multi-writer semantics
+- `ALTER TABLE` / schema migration primitives
+- Foreign key enforcement and index management
+- Stored procedures and triggers
 
-- **DISTINCT**: Remove duplicate rows
-- **OFFSET**: Pagination support (currently only LIMIT works)
-- **Aggregate functions**: COUNT, SUM, AVG, MIN, MAX
-- **GROUP BY**: Grouping with aggregate functions
-- **Subqueries**: Nested SELECT statements
-- **Multi-sheet JOIN**: INNER JOIN, LEFT JOIN across sheets
-- **Async dialect**: `excel+aio://` with AsyncEngine support
-
-> These features require changes in the underlying [excel-dbapi](https://github.com/yeongseon/excel-dbapi) query engine.
-
-### Not Planned
-
-These are explicitly out of scope:
-
-- Full ACID transactions (Excel files don't support them)
-- Concurrent write support (single-writer model by design)
-- ALTER TABLE / schema migration
-- Foreign key enforcement or index support
-- Stored procedures or triggers
+These constraints are inherited from the Excel file model and underlying driver behavior.
 
 ## Long-Term Vision
 
-1. **Seamless SQLAlchemy experience** for Excel files
-2. **Analysts and developers** use familiar SQL/ORM tools with Excel
-3. **Bridge** ad-hoc Excel data and structured database workflows
-4. **Cloud-native Excel** via Microsoft Graph API (experimental)
+1. Keep SQLAlchemy usage intuitive for spreadsheet-backed data workflows.
+2. Maintain compatibility with excel-dbapi capabilities as they expand.
+3. Provide clear boundaries so teams can choose Excel vs. traditional databases intentionally.
 
-**Not a goal**: Replace real databases for production workloads.
-
-## Versioning
-
-sqlalchemy-excel follows [Semantic Versioning](https://semver.org/):
-
-- **PATCH** (0.x.**y**): Bug fixes
-- **MINOR** (0.**x**.0): New features, backward-compatible
-- **MAJOR** (**x**.0.0): Breaking changes, stable API
-
-**Current status**: Beta (0.x.x) — API may change before 1.0.0.
-
----
-
-See [CHANGELOG.md](../CHANGELOG.md) for detailed release history.
+See [CHANGELOG.md](../CHANGELOG.md) for release-by-release details.

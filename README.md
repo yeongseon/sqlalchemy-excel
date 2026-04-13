@@ -28,12 +28,13 @@ Before writing any code, understand the dialect's capabilities and limits:
 | Schema inspection (tables, columns) | ✅ |
 | IN, BETWEEN, LIKE operators | ✅ |
 | DISTINCT | ✅ |
+| DISTINCT with JOIN | ❌ |
 | GROUP BY / HAVING | ✅ |
 | Aggregate functions (COUNT, SUM, AVG, MIN, MAX) | ✅ |
-| Subqueries in WHERE ... IN | ✅ (non-correlated only) |
-| INNER / LEFT / RIGHT JOIN (equality ON) | ✅ (constrained) |
+| Subqueries in WHERE ... IN | ✅ (non-correlated only; no JOIN in outer/subquery) |
+| INNER / LEFT / RIGHT / FULL OUTER JOIN (equality ON) | ✅ (constrained) |
+| CROSS JOIN | ✅ |
 | Chained JOINs (3+ tables) | ✅ (constrained) |
-| **FULL OUTER JOIN** | ❌ |
 | CTEs | ❌ |
 | UNION / UNION ALL / INTERSECT / EXCEPT | ✅ |
 | **Window functions (OVER)** | ❌ |
