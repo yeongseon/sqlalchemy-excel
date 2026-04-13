@@ -374,29 +374,29 @@ def test_compiler_allows_not_in_subquery(tmp_xlsx: str) -> None:
     assert "NOT IN" in sql
     engine.dispose()
 
-def test_compiler_rejects_update_with_subquery(tmp_xlsx: str) -> None:
-    """UPDATE with IN subquery should be rejected."""
+def test_compiler_accepts_update_with_subquery(tmp_xlsx: str) -> None:
+    """UPDATE with IN subquery should compile successfully."""
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, orders = _build_tables(metadata)
 
     sub = select(orders.c.user_id)
     stmt = users.update().where(users.c.id.in_(sub)).values(name="x")
-    with pytest.raises(exc.CompileError, match="does not support subqueries in UPDATE/DELETE"):
-        stmt.compile(dialect=engine.dialect)
+    compiled = stmt.compile(dialect=engine.dialect)
+    assert "IN" in str(compiled)
     engine.dispose()
 
 
-def test_compiler_rejects_delete_with_subquery(tmp_xlsx: str) -> None:
-    """DELETE with IN subquery should be rejected."""
+def test_compiler_accepts_delete_with_subquery(tmp_xlsx: str) -> None:
+    """DELETE with IN subquery should compile successfully."""
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, orders = _build_tables(metadata)
 
     sub = select(orders.c.user_id)
     stmt = users.delete().where(users.c.id.in_(sub))
-    with pytest.raises(exc.CompileError, match="does not support subqueries in UPDATE/DELETE"):
-        stmt.compile(dialect=engine.dialect)
+    compiled = stmt.compile(dialect=engine.dialect)
+    assert "IN" in str(compiled)
     engine.dispose()
 
 
@@ -539,8 +539,8 @@ def test_compiler_visit_subquery_direct_guards(tmp_xlsx: str) -> None:
     engine.dispose()
 
 
-def test_compiler_visit_subquery_rejects_in_update_context(tmp_xlsx: str) -> None:
-    """visit_subquery rejects subqueries when statement is UPDATE/DELETE."""
+def test_compiler_visit_subquery_accepts_in_update_context(tmp_xlsx: str) -> None:
+    """visit_subquery accepts subqueries when statement is UPDATE/DELETE."""
     from sqlalchemy import update as sa_update
 
     engine = create_engine(f"excel:///{tmp_xlsx}")
@@ -553,8 +553,9 @@ def test_compiler_visit_subquery_rejects_in_update_context(tmp_xlsx: str) -> Non
     compiler_inst = cast("Any", update_stmt.compile(dialect=engine.dialect))
     compiler_inst._in_in_clause = True
 
-    with pytest.raises(exc.CompileError, match="does not support subqueries in UPDATE/DELETE"):
-        compiler_inst.visit_subquery(sub)
+    # Should not raise
+    result = compiler_inst.visit_subquery(sub)
+    assert isinstance(result, str)
 
     engine.dispose()
 

@@ -13,11 +13,12 @@ Supported:
     DELETE FROM table [WHERE ...]
 
     Rejected (raises CompileError):
-    CTEs, window functions, RETURNING, FOR UPDATE, NOT IN,
+    CTEs, window functions, RETURNING, FOR UPDATE,
     NATURAL JOIN, non-equality/OR/non-column ON clauses
 
     Partially supported:
     non-correlated subqueries in WHERE ... IN (SELECT single_col FROM table [WHERE ...])
+    — supported in SELECT, UPDATE, and DELETE
 
 For single-table queries, excel-dbapi expects unquoted, unprefixed column names:
     SELECT id, name FROM users          (correct)
@@ -462,10 +463,6 @@ class ExcelCompiler(compiler.SQLCompiler):
                 "Excel dialect does not support nested subqueries"
             )
 
-        if isinstance(self.statement, dml.UpdateBase):
-            raise exc.CompileError(
-                "Excel dialect does not support subqueries in UPDATE/DELETE"
-            )
 
         inner = getattr(subquery, "element", None)
         if inner is not None:
@@ -506,10 +503,6 @@ class ExcelCompiler(compiler.SQLCompiler):
                     "Excel dialect does not support nested subqueries"
                 )
 
-            if isinstance(self.statement, dml.UpdateBase):
-                raise exc.CompileError(
-                    "Excel dialect does not support subqueries in UPDATE/DELETE"
-                )
 
             assert element is not None  # guaranteed by is_subquery_select check
             # Reject subqueries that themselves contain a JOIN

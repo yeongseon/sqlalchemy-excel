@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.3] - 2026-04-13
+
+### Added
+- Compiler support for GROUP BY, HAVING, and aggregates with JOIN queries
+- End-to-end test for explicit SQLAlchemy aliases with GROUP BY + JOIN
+- Compiler support for subqueries in UPDATE/DELETE WHERE clauses
+- End-to-end tests for UPDATE/DELETE with IN/NOT IN subqueries
+
+### Changed
+- Removed GROUP BY + JOIN, HAVING + JOIN, and aggregate + JOIN compiler guards
+- Removed UpdateBase subquery rejection guards in visit_subquery and visit_grouping
+
+### Fixed
+- Aliased JOIN with table-qualified column refs in GROUP BY/aggregate context
+
+
 ## [0.5.2] - 2026-04-13
 
 ### Added

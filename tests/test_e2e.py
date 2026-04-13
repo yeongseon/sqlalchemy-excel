@@ -408,6 +408,65 @@ def test_e2e_subquery_with_inner_where(tmp_path) -> None:
     engine.dispose()
 
 
+def test_e2e_update_with_subquery_in_where(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    admins = Table(
+        "admins",
+        metadata,
+        Column("id", Integer, primary_key=True),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [{"id": 1, "name": "Alice", "age": 30}, {"id": 2, "name": "Bob", "age": 25}, {"id": 3, "name": "Charlie", "age": 35}],
+        )
+        conn.execute(insert(admins), [{"id": 1}, {"id": 3}])
+
+    with engine.begin() as conn:
+        stmt = users.update().where(users.c.id.in_(select(admins.c.id))).values(age=99)
+        result = conn.execute(stmt)
+        assert result.rowcount == 2
+
+    with engine.connect() as conn:
+        rows = conn.execute(select(users.c.name, users.c.age).order_by(users.c.id)).all()
+        assert rows == [("Alice", 99), ("Bob", 25), ("Charlie", 99)]
+
+    engine.dispose()
+
+
+def test_e2e_delete_with_subquery_in_where(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    admins = Table(
+        "admins",
+        metadata,
+        Column("id", Integer, primary_key=True),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [{"id": 1, "name": "Alice", "age": 30}, {"id": 2, "name": "Bob", "age": 25}, {"id": 3, "name": "Charlie", "age": 35}],
+        )
+        conn.execute(insert(admins), [{"id": 1}, {"id": 3}])
+
+    with engine.begin() as conn:
+        stmt = users.delete().where(users.c.id.notin_(select(admins.c.id)))
+        result = conn.execute(stmt)
+        assert result.rowcount == 1
+
+    with engine.connect() as conn:
+        rows = conn.execute(select(users.c.name).order_by(users.c.id)).all()
+        assert rows == [("Alice",), ("Charlie",)]
+
+    engine.dispose()
+
 def test_e2e_aggregate_count(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
