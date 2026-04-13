@@ -177,3 +177,22 @@ class TestCompilationRejection:
         stmt = select(func.median(users_table.c.age)).select_from(users_table)
         with pytest.raises(exc.CompileError, match="function"):
             stmt.compile(dialect=excel_engine.dialect)
+
+
+class TestMultiColumnOrderBy:
+    """Test multi-column ORDER BY SQL compilation."""
+
+    def test_multi_column_order_by(self, excel_engine, users_table):
+        stmt = (
+            select(users_table)
+            .order_by(users_table.c.name.asc(), users_table.c.age.desc())
+        )
+        compiled = stmt.compile(dialect=excel_engine.dialect)
+        sql = str(compiled)
+        assert "ORDER BY" in sql
+        assert "name ASC" in sql
+        assert "age DESC" in sql
+        # Verify column order: name comes before age
+        name_pos = sql.index("name ASC")
+        age_pos = sql.index("age DESC")
+        assert name_pos < age_pos

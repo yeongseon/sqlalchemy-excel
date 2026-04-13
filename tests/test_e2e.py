@@ -1391,3 +1391,152 @@ def test_e2e_delete_with_not_between(tmp_path) -> None:
         assert sorted(names) == ["Alice", "Bob", "Charlie", "Diana"]
 
     engine.dispose()
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Phase 11: Multi-column ORDER BY
+# ──────────────────────────────────────────────────────────────────────
+
+
+def _seed_multi_order(engine, users):
+    """Seed data with deliberate ties for multi-column ORDER BY tests."""
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+                {"id": 3, "name": "Charlie", "age": 30},
+                {"id": 4, "name": "Diana", "age": 25},
+                {"id": 5, "name": "Eve", "age": 30},
+            ],
+        )
+
+
+def test_e2e_multi_order_by_age_asc_name_desc(tmp_path) -> None:
+    """ORDER BY age ASC, name DESC — ties in age broken by name descending."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+    _seed_multi_order(engine, users)
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(users.c.name, users.c.age)
+            .order_by(users.c.age.asc(), users.c.name.desc())
+        ).all()
+        # age 25: Diana, Bob (DESC) → Diana, Bob
+        # age 30: Eve, Charlie, Alice (DESC) → Eve, Charlie, Alice
+        assert rows == [
+            ("Diana", 25),
+            ("Bob", 25),
+            ("Eve", 30),
+            ("Charlie", 30),
+            ("Alice", 30),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_multi_order_by_name_asc_age_desc(tmp_path) -> None:
+    """ORDER BY name ASC, age DESC — primary sort by name."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+    _seed_multi_order(engine, users)
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(users.c.name, users.c.age)
+            .order_by(users.c.name.asc(), users.c.age.desc())
+        ).all()
+        assert rows == [
+            ("Alice", 30),
+            ("Bob", 25),
+            ("Charlie", 30),
+            ("Diana", 25),
+            ("Eve", 30),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_multi_order_by_with_limit(tmp_path) -> None:
+    """Multi-column ORDER BY + LIMIT."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+    _seed_multi_order(engine, users)
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(users.c.name, users.c.age)
+            .order_by(users.c.age.asc(), users.c.name.asc())
+            .limit(3)
+        ).all()
+        # age 25: Bob, Diana (ASC) → Bob, Diana
+        # age 30: Alice (first of 3 at 30)
+        assert rows == [
+            ("Bob", 25),
+            ("Diana", 25),
+            ("Alice", 30),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_multi_order_by_with_where(tmp_path) -> None:
+    """Multi-column ORDER BY + WHERE filter."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+    _seed_multi_order(engine, users)
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            select(users.c.name, users.c.age)
+            .where(users.c.age == 30)
+            .order_by(users.c.name.desc(), users.c.id.asc())
+        ).all()
+        # Only age=30: Eve, Charlie, Alice (DESC by name)
+        assert rows == [
+            ("Eve", 30),
+            ("Charlie", 30),
+            ("Alice", 30),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_multi_order_by_compound_union(tmp_path) -> None:
+    """Compound UNION ALL with multi-column ORDER BY."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+    _seed_multi_order(engine, users)
+
+    t = Table("users", MetaData(), autoload_with=engine)
+    with engine.connect() as conn:
+        # UNION ALL with compound-level multi-column ORDER BY
+        q1 = select(t.c.name, t.c.age).where(t.c.age <= 25)
+        q2 = select(t.c.name, t.c.age).where(t.c.age >= 30)
+        stmt = (
+            sa.union_all(q1, q2)
+            .order_by(t.c.age.asc(), t.c.name.asc())
+        )
+        rows = conn.execute(stmt).all()
+        # age 25: Bob, Diana; age 30: Alice, Charlie, Eve
+        assert rows == [
+            ("Bob", 25),
+            ("Diana", 25),
+            ("Alice", 30),
+            ("Charlie", 30),
+            ("Eve", 30),
+        ]
+
+    engine.dispose()
