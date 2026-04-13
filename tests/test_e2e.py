@@ -1781,3 +1781,306 @@ def test_e2e_multi_order_by_compound_union(tmp_path) -> None:
         ]
 
     engine.dispose()
+
+
+# ---- Phase 14: SELECT * with JOIN (via literal_column('*')) ----
+
+
+def test_e2e_select_star_inner_join(tmp_path) -> None:
+    """SELECT * FROM users JOIN orders ON ... returns all columns from both tables."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
+        conn.execute(insert(orders).values(id=2, user_id=2, amount=200))
+
+    with engine.connect() as conn:
+        stmt = (
+            sa.select(sa.literal_column("*"))
+            .select_from(
+                users.join(orders, users.c.id == orders.c.user_id)
+            )
+            .order_by(users.c.id)
+        )
+        result = conn.execute(stmt)
+        rows = result.all()
+        # All 6 columns: users(id, name, age), orders(id, user_id, amount)
+        assert len(rows) == 2
+        assert rows[0] == (1, "Alice", 30, 1, 1, 100)
+        assert rows[1] == (2, "Bob", 25, 2, 2, 200)
+
+    engine.dispose()
+
+
+def test_e2e_select_star_left_join(tmp_path) -> None:
+    """SELECT * with LEFT JOIN includes unmatched left rows with NULLs."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
+
+    with engine.connect() as conn:
+        stmt = (
+            sa.select(sa.literal_column("*"))
+            .select_from(
+                users.join(orders, users.c.id == orders.c.user_id, isouter=True)
+            )
+            .order_by(users.c.id)
+        )
+        rows = conn.execute(stmt).all()
+        # Alice matches, Bob has no order (NULLs for orders columns)
+        assert len(rows) == 2
+        assert rows[0] == (1, "Alice", 30, 1, 1, 100)
+        assert rows[1] == (2, "Bob", 25, None, None, None)
+
+    engine.dispose()
+
+
+def test_e2e_select_star_chained_join(tmp_path) -> None:
+    """SELECT * with chained JOINs across three tables."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+    items = Table(
+        "items",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("order_id", Integer),
+        Column("sku", String),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(orders).values(id=10, user_id=1, amount=100))
+        conn.execute(insert(items).values(id=100, order_id=10, sku="A-1"))
+
+    with engine.connect() as conn:
+        stmt = (
+            sa.select(sa.literal_column("*"))
+            .select_from(
+                users.join(orders, users.c.id == orders.c.user_id)
+                .join(items, orders.c.id == items.c.order_id)
+            )
+        )
+        rows = conn.execute(stmt).all()
+        # 9 columns: users(3) + orders(3) + items(3)
+        assert len(rows) == 1
+        assert rows[0] == (1, "Alice", 30, 10, 1, 100, 100, 10, "A-1")
+
+    engine.dispose()
+
+
+def test_e2e_select_star_with_where(tmp_path) -> None:
+    """SELECT * with JOIN and WHERE clause filters correctly."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
+        conn.execute(insert(orders).values(id=2, user_id=2, amount=200))
+
+    with engine.connect() as conn:
+        stmt = (
+            sa.select(sa.literal_column("*"))
+            .select_from(
+                users.join(orders, users.c.id == orders.c.user_id)
+            )
+            .where(users.c.name == "Alice")
+        )
+        rows = conn.execute(stmt).all()
+        assert len(rows) == 1
+        assert rows[0] == (1, "Alice", 30, 1, 1, 100)
+
+    engine.dispose()
+
+
+def test_e2e_select_star_description_columns(tmp_path) -> None:
+    """Verify result proxy exposes qualified column names for SELECT * with JOIN."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
+
+    with engine.connect() as conn:
+        stmt = (
+            sa.select(sa.literal_column("*"))
+            .select_from(
+                users.join(orders, users.c.id == orders.c.user_id)
+            )
+        )
+        result = conn.execute(stmt)
+        col_names = [desc[0] for desc in result.cursor.description]
+        # SA compiles to: SELECT * FROM users JOIN orders ON users.id = orders.user_id
+        # excel-dbapi expands * using table names as source refs
+        assert col_names == [
+            "users.id",
+            "users.name",
+            "users.age",
+            "orders.id",
+            "orders.user_id",
+            "orders.amount",
+        ]
+        # Fetch to ensure result is consumable
+        rows = result.all()
+        assert len(rows) == 1
+
+    engine.dispose()
+
+
+def test_e2e_select_star_empty_result_has_description(tmp_path) -> None:
+    """SELECT * with JOIN + impossible WHERE still populates cursor.description."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
+
+    with engine.connect() as conn:
+        stmt = (
+            sa.select(sa.literal_column("*"))
+            .select_from(
+                users.join(orders, users.c.id == orders.c.user_id)
+            )
+            .where(users.c.id == 999)
+        )
+        result = conn.execute(stmt)
+        # Check description BEFORE consuming rows — SA closes cursor after .all()
+        desc = result.cursor.description
+        assert [d[0] for d in desc] == [
+            "users.id",
+            "users.name",
+            "users.age",
+            "orders.id",
+            "orders.user_id",
+            "orders.amount",
+        ]
+        rows = result.all()
+        assert len(rows) == 0
+
+    engine.dispose()
+
+
+def test_e2e_select_star_labeled_rejected(tmp_path) -> None:
+    """SELECT * AS alias with JOIN is rejected by the dbapi layer."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
+
+    with engine.connect() as conn:
+        stmt = (
+            sa.select(sa.literal_column("*").label("all_cols"))
+            .select_from(
+                users.join(orders, users.c.id == orders.c.user_id)
+            )
+        )
+        with pytest.raises(exc.ProgrammingError):
+            conn.execute(stmt)
+
+    engine.dispose()
+
+
+def test_e2e_select_star_mixed_columns_rejected(tmp_path) -> None:
+    """SELECT *, users.id with JOIN is rejected by the dbapi layer."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
+
+    with engine.connect() as conn:
+        stmt = (
+            sa.select(sa.literal_column("*"), users.c.id)
+            .select_from(
+                users.join(orders, users.c.id == orders.c.user_id)
+            )
+        )
+        with pytest.raises(exc.ProgrammingError):
+            conn.execute(stmt)
+
+    engine.dispose()
