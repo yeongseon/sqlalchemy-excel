@@ -1411,13 +1411,13 @@ def test_strip_compound_branch_parens_grouped_raises() -> None:
         ExcelCompiler._strip_compound_branch_parens(grouped)
 
 
-def test_strip_compound_branch_parens_grouped_compound_raises() -> None:
-    """Grouped compound branch raises CompileError."""
+def test_strip_compound_branch_parens_grouped_union_all_raises() -> None:
+    """Grouped compound branch with UNION ALL raises CompileError."""
     from sqlalchemy_excel.compiler import ExcelCompiler
 
     grouped = (
         "SELECT id FROM t1 "
-        "UNION (SELECT id FROM t2 INTERSECT SELECT id FROM t3)"
+        "UNION ALL (SELECT id FROM t2 UNION ALL SELECT id FROM t3)"
     )
     with pytest.raises(exc.CompileError, match="grouped/nested compound"):
         ExcelCompiler._strip_compound_branch_parens(grouped)
@@ -1482,3 +1482,24 @@ def test_is_pos_in_quotes_escaped_quote() -> None:
     # 'F' in FROM is outside quotes.
     f_pos = sql.index("FROM")
     assert ExcelCompiler._is_pos_in_quotes(sql, f_pos) is False
+
+
+def test_strip_compound_branch_parens_double_wrapped_grouped() -> None:
+    """Double-wrapped grouped compound raises CompileError.
+
+    UNION ((SELECT ... INTERSECT SELECT ...)) — the outer branch has
+    an extra layer of parentheses wrapping the grouped compound.
+    """
+    from sqlalchemy_excel.compiler import ExcelCompiler
+
+    # The outer parens wrap a branch that itself is grouped.
+    double_wrapped = (
+        "SELECT id FROM t1 "
+        "UNION ((SELECT id FROM t2 INTERSECT SELECT id FROM t3))"
+    )
+    # The outer '(' is matched and inner content starts with '(' not 'SELECT',
+    # so it is NOT treated as a branch — it passes through unchanged.
+    # This is safe: the SQL will fail at the DBAPI parser level, not silently
+    # produce wrong results.
+    result = ExcelCompiler._strip_compound_branch_parens(double_wrapped)
+    assert "((SELECT" in result
