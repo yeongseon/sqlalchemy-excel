@@ -39,8 +39,8 @@ class TestDialectFlags:
     def test_paramstyle(self, engine):
         assert engine.dialect.default_paramstyle == "qmark"
 
-    def test_no_alter(self, engine):
-        assert engine.dialect.supports_alter is False
+    def test_supports_alter(self, engine):
+        assert engine.dialect.supports_alter is True
 
     def test_no_sequences(self, engine):
         assert engine.dialect.supports_sequences is False

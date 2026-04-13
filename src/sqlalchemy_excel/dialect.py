@@ -91,7 +91,7 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
     default_paramstyle: str = "qmark"
 
     # ── Feature flags ──────────────────────────────────────
-    supports_alter: bool = False
+    supports_alter: bool = True
     supports_sequences: bool = False
     supports_schemas: bool = False
     supports_views: bool = False
@@ -173,6 +173,7 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
         """Execute a statement, normalizing whitespace for excel-dbapi."""
         normalized = re.sub(r"\s+", " ", statement).strip()
         cursor.execute(normalized, parameters)
+        self._sync_alter_table_metadata(cursor, normalized)
 
     def do_execute_no_params(
         self,
@@ -183,6 +184,66 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
         """Execute a statement with no parameters."""
         normalized = re.sub(r"\s+", " ", statement).strip()
         cursor.execute(normalized, None)
+        self._sync_alter_table_metadata(cursor, normalized)
+
+    def _sync_alter_table_metadata(self, cursor: Any, statement: str) -> None:
+        if not statement.upper().startswith("ALTER TABLE "):
+            return
+
+        import excel_dbapi
+
+        tokens = statement.split()
+        if len(tokens) < 6:
+            return
+
+        table_name = tokens[2].strip('"')
+        operation = tokens[3].upper()
+
+        raw_conn = cursor.connection
+        current_meta = excel_dbapi.read_table_metadata(raw_conn, table_name) or []
+
+        type_map = {col["name"]: col["type_name"] for col in current_meta}
+        nullable_map = {col["name"]: col.get("nullable", True) for col in current_meta}
+        pk_map = {col["name"]: col.get("primary_key", False) for col in current_meta}
+
+        if operation == "ADD" and len(tokens) == 7 and tokens[4].upper() == "COLUMN":
+            added_type = tokens[6].upper()
+            if added_type == "FLOAT":
+                added_type = "REAL"
+            type_map[tokens[5].strip('"')] = added_type
+
+        if operation == "DROP" and len(tokens) == 6 and tokens[4].upper() == "COLUMN":
+            removed = tokens[5].strip('"')
+            type_map.pop(removed, None)
+            nullable_map.pop(removed, None)
+            pk_map.pop(removed, None)
+
+        if (
+            operation == "RENAME"
+            and len(tokens) == 8
+            and tokens[4].upper() == "COLUMN"
+            and tokens[6].upper() == "TO"
+        ):
+            old_name = tokens[5].strip('"')
+            new_name = tokens[7].strip('"')
+            if old_name in type_map:
+                type_map[new_name] = type_map.pop(old_name)
+            if old_name in nullable_map:
+                nullable_map[new_name] = nullable_map.pop(old_name)
+            if old_name in pk_map:
+                pk_map[new_name] = pk_map.pop(old_name)
+
+        live_columns = excel_dbapi.get_columns(raw_conn, table_name)
+        columns = [
+            {
+                "name": col["name"],
+                "type_name": type_map.get(col["name"], col.get("type", "TEXT")),
+                "nullable": nullable_map.get(col["name"], True),
+                "primary_key": pk_map.get(col["name"], False),
+            }
+            for col in live_columns
+        ]
+        excel_dbapi.write_table_metadata(raw_conn, table_name, columns)
 
     def do_ping(self, dbapi_connection: Any) -> bool:
         """Ping the connection by verifying it's not closed."""
