@@ -3221,3 +3221,201 @@ def test_e2e_case_when_simple_case(tmp_path) -> None:
         ]
 
     engine.dispose()
+
+
+def test_e2e_alter_table_add_column(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.connect() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+            ],
+        )
+        conn.commit()
+
+    with engine.connect() as conn:
+        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN email TEXT")
+        conn.commit()
+
+    with engine.connect() as conn:
+        rows = conn.exec_driver_sql(
+            "SELECT id, name, email FROM users ORDER BY id"
+        ).all()
+        assert rows == [(1, "Alice", None), (2, "Bob", None)]
+
+    engine.dispose()
+
+
+def test_e2e_alter_table_drop_column(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.connect() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+            ],
+        )
+        conn.commit()
+
+    with engine.connect() as conn:
+        conn.exec_driver_sql("ALTER TABLE users DROP COLUMN age")
+        conn.commit()
+
+    with engine.connect() as conn:
+        rows = conn.exec_driver_sql("SELECT id, name FROM users ORDER BY id").all()
+        assert rows == [(1, "Alice"), (2, "Bob")]
+
+    engine.dispose()
+
+
+def test_e2e_alter_table_rename_column(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.connect() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+            ],
+        )
+        conn.commit()
+
+    with engine.connect() as conn:
+        conn.exec_driver_sql("ALTER TABLE users RENAME COLUMN name TO full_name")
+        conn.commit()
+
+    with engine.connect() as conn:
+        rows = conn.exec_driver_sql(
+            "SELECT id, full_name, age FROM users ORDER BY id"
+        ).all()
+        assert rows == [(1, "Alice", 30), (2, "Bob", 25)]
+
+    engine.dispose()
+
+
+def test_e2e_alter_table_add_column_then_insert(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.connect() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+            ],
+        )
+        conn.commit()
+
+    with engine.connect() as conn:
+        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN email TEXT")
+        conn.exec_driver_sql(
+            "INSERT INTO users (id, name, age, email) VALUES (3, 'Charlie', 35, 'charlie@example.com')"
+        )
+        conn.commit()
+
+    with engine.connect() as conn:
+        rows = conn.exec_driver_sql(
+            "SELECT id, name, age, email FROM users ORDER BY id"
+        ).all()
+        assert rows == [
+            (1, "Alice", 30, None),
+            (2, "Bob", 25, None),
+            (3, "Charlie", 35, "charlie@example.com"),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_alter_table_multiple_operations_sequence(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.connect() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+            ],
+        )
+        conn.commit()
+
+    with engine.connect() as conn:
+        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN email TEXT")
+        conn.exec_driver_sql("ALTER TABLE users RENAME COLUMN name TO full_name")
+        conn.exec_driver_sql("ALTER TABLE users DROP COLUMN age")
+        conn.commit()
+
+    with engine.connect() as conn:
+        rows = conn.exec_driver_sql(
+            "SELECT id, full_name, email FROM users ORDER BY id"
+        ).all()
+        assert rows == [(1, "Alice", None), (2, "Bob", None)]
+
+    engine.dispose()
+
+
+def test_e2e_alter_table_add_existing_column_error(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.connect() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+            ],
+        )
+        conn.commit()
+
+    with engine.connect() as conn:
+        with pytest.raises(exc.ProgrammingError):
+            conn.exec_driver_sql("ALTER TABLE users ADD COLUMN name TEXT")
+
+    engine.dispose()
+
+
+def test_e2e_alter_table_drop_nonexistent_column_error(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.connect() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+            ],
+        )
+        conn.commit()
+
+    with engine.connect() as conn:
+        with pytest.raises(exc.ProgrammingError):
+            conn.exec_driver_sql("ALTER TABLE users DROP COLUMN missing_col")
+
+    engine.dispose()
