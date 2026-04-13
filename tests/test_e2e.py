@@ -3102,3 +3102,122 @@ def test_e2e_case_when_with_where(tmp_path) -> None:
         ]
 
     engine.dispose()
+
+
+def test_e2e_case_when_order_by_case_expression(tmp_path) -> None:
+    """ORDER BY a CASE expression directly (not an alias)."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    people = _status_table(metadata)
+    metadata.create_all(engine)
+    _seed_status_data(engine, people)
+
+    with engine.connect() as conn:
+        case_expr = case(
+            (people.c.status == "active", sa.literal(0)),
+            else_=sa.literal(1),
+        )
+        stmt = (
+            select(people.c.name, people.c.status)
+            .order_by(case_expr.asc(), people.c.name)
+        )
+        rows = conn.execute(stmt).all()
+        # active first (0), then others (1), each sub-sorted by name
+        assert rows == [
+            ("Alice", "active"),
+            ("Charlie", "active"),
+            ("Bob", "inactive"),
+            ("Diana", "pending"),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_case_when_order_by_case_desc(tmp_path) -> None:
+    """ORDER BY CASE expression DESC."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    people = _status_table(metadata)
+    metadata.create_all(engine)
+    _seed_status_data(engine, people)
+
+    with engine.connect() as conn:
+        case_expr = case(
+            (people.c.status == "active", sa.literal(0)),
+            else_=sa.literal(1),
+        )
+        stmt = (
+            select(people.c.name, people.c.status)
+            .order_by(case_expr.desc(), people.c.name)
+        )
+        rows = conn.execute(stmt).all()
+        # non-active first (1 DESC), then active (0 DESC), sub-sorted by name ASC
+        assert rows == [
+            ("Bob", "inactive"),
+            ("Diana", "pending"),
+            ("Alice", "active"),
+            ("Charlie", "active"),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_case_when_arithmetic_addition(tmp_path) -> None:
+    """CASE expression used as operand in arithmetic (CASE...END + N)."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    people = _status_table(metadata)
+    metadata.create_all(engine)
+    _seed_status_data(engine, people)
+
+    with engine.connect() as conn:
+        expr = case(
+            (people.c.status == "active", people.c.age),
+            else_=sa.literal(0),
+        ) + sa.literal(100)
+        stmt = (
+            select(people.c.name, expr.label("boosted"))
+            .order_by(people.c.id)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [
+            ("Alice", 130.0),
+            ("Bob", 100.0),
+            ("Charlie", 135.0),
+            ("Diana", 100.0),
+        ]
+
+    engine.dispose()
+
+
+def test_e2e_case_when_simple_case(tmp_path) -> None:
+    """Simple CASE (CASE value WHEN match THEN ...) via searched CASE in SA."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    people = _status_table(metadata)
+    metadata.create_all(engine)
+    _seed_status_data(engine, people)
+
+    with engine.connect() as conn:
+        # SA 2.0 uses searched CASE syntax; we test mapping each status
+        stmt = (
+            select(
+                people.c.name,
+                case(
+                    (people.c.status == "active", sa.literal("A")),
+                    (people.c.status == "inactive", sa.literal("I")),
+                    (people.c.status == "pending", sa.literal("P")),
+                    else_=sa.literal("?"),
+                ).label("code"),
+            )
+            .order_by(people.c.id)
+        )
+        rows = conn.execute(stmt).all()
+        assert rows == [
+            ("Alice", "A"),
+            ("Bob", "I"),
+            ("Charlie", "A"),
+            ("Diana", "P"),
+        ]
+
+    engine.dispose()
