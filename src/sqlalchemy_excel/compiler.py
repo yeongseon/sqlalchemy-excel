@@ -235,7 +235,25 @@ class ExcelCompiler(compiler.SQLCompiler):
                 f"Excel dialect does not support expression arguments in {function_name}()"
             )
 
-        if inner != "*" and not re.fullmatch(
+        distinct_match = re.fullmatch(
+            r"(?i)DISTINCT\s+([A-Za-z_][A-Za-z0-9_]*)",
+            inner,
+        )
+        distinct_qualified_match = re.fullmatch(
+            r"(?i)DISTINCT\s+([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*)",
+            inner,
+        )
+        if distinct_qualified_match:
+            raise exc.CompileError(
+                "Excel dialect does not support COUNT(DISTINCT table.col); "
+                "use bare column names only"
+            )
+        if distinct_match:
+            if function_name != "count":
+                raise exc.CompileError(
+                    f"Excel dialect does not support DISTINCT in {function_name}()"
+                )
+        elif inner != "*" and not re.fullmatch(
             r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?",
             inner,
         ):
