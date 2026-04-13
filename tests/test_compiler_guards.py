@@ -991,3 +991,85 @@ def test_compiler_handles_grouping_wrapper_in_on(tmp_xlsx: str) -> None:
     assert "JOIN" in sql_text
 
     engine.dispose()
+
+
+def test_compound_join_no_state_leak(tmp_xlsx: str) -> None:
+    """_has_join must reset between compound branches.
+
+    Branch 1 has a JOIN (table-qualified columns), branch 2 does not.
+    Without the reset, branch 2 would emit qualified columns incorrectly.
+    """
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = sa.union(
+        select(users.c.id).join(orders, users.c.id == orders.c.user_id),
+        select(users.c.id),
+    )
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    # Branch 1 should have table-qualified column (users.id).
+    assert sql.startswith("SELECT users.id")
+    # Branch 2 should have unqualified column (id).
+    assert "UNION SELECT id FROM users" in sql
+
+    engine.dispose()
+
+
+def test_compound_no_join_both_branches(tmp_xlsx: str) -> None:
+    """Compound with no JOINs in either branch: columns stay unqualified."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    stmt = sa.union(select(users.c.id), select(users.c.id))
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    # Neither branch should have table-qualified columns.
+    assert sql == "SELECT id FROM users UNION SELECT id FROM users"
+
+    engine.dispose()
+
+
+def test_compound_strips_branch_local_order_by(tmp_xlsx: str) -> None:
+    """Branch-local ORDER BY is stripped to avoid parenthesized SQL."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    sub1 = select(users.c.id).order_by(users.c.id.desc())
+    sub2 = select(users.c.id)
+    stmt = sa.union(sub1, sub2)
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    # Branch-local ORDER BY should be stripped, no parens.
+    assert "(" not in sql
+    assert "ORDER BY" not in sql
+    assert sql == "SELECT id FROM users UNION SELECT id FROM users"
+
+    engine.dispose()
+
+
+def test_compound_outer_order_by_preserved(tmp_xlsx: str) -> None:
+    """Compound-level ORDER BY is preserved in the output."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    stmt = sa.union(select(users.c.id), select(users.c.id)).order_by(users.c.id)
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    assert sql == "SELECT id FROM users UNION SELECT id FROM users ORDER BY id"
+
+    engine.dispose()
+
+
+def test_compound_outer_order_by_with_limit(tmp_xlsx: str) -> None:
+    """Compound-level ORDER BY + LIMIT are preserved."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    stmt = sa.union(select(users.c.id), select(users.c.id)).order_by(users.c.id).limit(5)
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    assert "ORDER BY id" in sql
+    assert "LIMIT" in sql
+
+    engine.dispose()

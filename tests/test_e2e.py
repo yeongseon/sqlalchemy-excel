@@ -987,3 +987,107 @@ def test_e2e_same_side_on_clause_rejected_at_compile_time(tmp_path) -> None:
             conn.execute(stmt).all()
 
     engine.dispose()
+
+
+def test_e2e_compound_with_mixed_join_branches(tmp_path) -> None:
+    """UNION where branch 1 has a JOIN and branch 2 does not.
+
+    Regression test: _has_join must reset between compound branches.
+    """
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    orders = Table(
+        "orders",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("user_id", Integer),
+        Column("amount", Integer),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+        conn.execute(insert(users).values(id=2, name="Bob", age=25))
+        conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
+
+    with engine.connect() as conn:
+        # Branch 1: JOIN (users + orders), branch 2: single-table (users)
+        stmt = sa.union(
+            select(users.c.id)
+            .join(orders, users.c.id == orders.c.user_id),
+            select(users.c.id),
+        )
+        rows = conn.execute(stmt).all()
+        # UNION deduplication: ids 1 (from join) and 1,2 (from users) → {1, 2}
+        assert sorted(rows) == [(1,), (2,)]
+
+    engine.dispose()
+
+
+def test_e2e_compound_with_outer_order_by(tmp_path) -> None:
+    """Compound-level ORDER BY sorts the entire result set."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+                {"id": 3, "name": "Charlie", "age": 35},
+            ],
+        )
+
+    t = Table("users", MetaData(), autoload_with=engine)
+    with engine.connect() as conn:
+        # UNION ALL with compound-level ORDER BY DESC
+        stmt = (
+            sa.union_all(
+                select(t.c.id).where(t.c.id <= 2),
+                select(t.c.id).where(t.c.id >= 2),
+            )
+            .order_by(t.c.id.desc())
+        )
+        rows = conn.execute(stmt).all()
+        # UNION ALL keeps dupes: [1, 2] + [2, 3] = [1, 2, 2, 3], ORDER BY DESC → [3, 2, 2, 1]
+        assert rows == [(3,), (2,), (2,), (1,)]
+
+    engine.dispose()
+
+
+def test_e2e_compound_with_outer_order_by_and_limit(tmp_path) -> None:
+    """Compound-level ORDER BY + LIMIT."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+                {"id": 3, "name": "Charlie", "age": 35},
+            ],
+        )
+
+    t = Table("users", MetaData(), autoload_with=engine)
+    with engine.connect() as conn:
+        stmt = (
+            sa.union_all(
+                select(t.c.id).where(t.c.id <= 2),
+                select(t.c.id).where(t.c.id >= 2),
+            )
+            .order_by(t.c.id.desc())
+            .limit(2)
+        )
+        rows = conn.execute(stmt).all()
+        # [3, 2, 2, 1] limited to 2 → [3, 2]
+        assert rows == [(3,), (2,)]
+
+    engine.dispose()

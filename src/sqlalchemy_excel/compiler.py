@@ -165,6 +165,7 @@ class ExcelCompiler(compiler.SQLCompiler):
         lateral: Any,
         compound_index: Any,
     ) -> Any:
+        self._has_join = False
         setup_select_stack = cast(
             "Callable[..., Any]", super()._setup_select_stack
         )
@@ -565,15 +566,41 @@ class ExcelCompiler(compiler.SQLCompiler):
         compound_index: Any = None,
         **kwargs: Any,
     ) -> str:
+        import re
+
         visit_compound_select = cast(
             "Callable[..., str]", super().visit_compound_select
         )
-        return visit_compound_select(
+        sql = visit_compound_select(
             cs,
             asfrom=asfrom,
             compound_index=compound_index,
             **kwargs,
         )
+
+        # SQLAlchemy parenthesizes branches that have their own ORDER BY,
+        # e.g. "(SELECT id FROM t1 ORDER BY id DESC) UNION SELECT id FROM t2".
+        # The excel-dbapi parser cannot handle leading '('.  Strip the
+        # branch-local ORDER BY and its parentheses, since branch-level
+        # ordering is semantically meaningless for compound queries.
+        def _strip_paren_branch(m: Any) -> str:
+            inner = m.group(1)
+            # Remove branch-local ORDER BY clause
+            inner = re.sub(
+                r"\s+ORDER\s+BY\s+\S+(?:\s+(?:ASC|DESC))?",
+                "",
+                inner,
+                flags=re.IGNORECASE,
+            )
+            return inner
+
+        sql = re.sub(
+            r"\(\s*(SELECT\b.*?)\s*\)",
+            _strip_paren_branch,
+            sql,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        return sql
 
     def visit_over(
         self,
