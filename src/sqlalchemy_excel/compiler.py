@@ -589,13 +589,23 @@ class ExcelCompiler(compiler.SQLCompiler):
     def _strip_compound_branch_parens(sql: str) -> str:
         """Strip outermost balanced parens that wrap compound branches.
 
-        Only removes parentheses whose balanced content starts with SELECT
-        (i.e. a compound branch wrapper).  Inner parentheses such as
-        ``WHERE id IN (1, 2)`` or ``IN (SELECT ...)`` subqueries are
-        preserved because they are nested inside the branch, not at the
-        top level.
+        Only removes parentheses that wrap an entire compound branch,
+        i.e. a ``(SELECT ...)`` group that appears at the very start of
+        the SQL or immediately after a compound keyword (UNION, INTERSECT,
+        EXCEPT, ALL).  ``IN (SELECT ...)`` subqueries inside a branch are
+        preserved because they follow ``IN``, not a compound keyword.
+
+        Branch-local ``ORDER BY`` is stripped in a parenthesis-aware way
+        so that ``ORDER BY`` inside nested subqueries (e.g.
+        ``IN (SELECT ... ORDER BY ...)``) is preserved.
         """
         import re
+
+        # Regex to detect compound keyword or start-of-string before '('.
+        _BRANCH_POS_RE = re.compile(
+            r"(?:^|(?:UNION|INTERSECT|EXCEPT|ALL))\s*$",
+            re.IGNORECASE,
+        )
 
         result: list[str] = []
         i = 0
@@ -615,14 +625,21 @@ class ExcelCompiler(compiler.SQLCompiler):
                 # j is one past the matching ')'.
                 inner = sql[i + 1 : j - 1].strip()
 
-                if inner.upper().startswith("SELECT"):
-                    # This is a branch wrapper.  Strip branch-local
-                    # ORDER BY (semantically meaningless for compound).
-                    inner = re.sub(
-                        r"\s+ORDER\s+BY\s+\S+(?:\s+(?:ASC|DESC))?",
-                        "",
-                        inner,
-                        flags=re.IGNORECASE,
+                # Only strip if (a) content starts with SELECT AND
+                # (b) the '(' is at a compound-branch position (start
+                # of string or after UNION/INTERSECT/EXCEPT/ALL).
+                prefix = "".join(result).rstrip()
+                is_branch = (
+                    inner.upper().startswith("SELECT")
+                    and _BRANCH_POS_RE.search(prefix) is not None
+                )
+
+                if is_branch:
+                    # Strip branch-local ORDER BY in a paren-aware
+                    # way: only match ORDER BY at depth-0 within the
+                    # inner SQL so nested subquery ORDER BY is kept.
+                    inner = ExcelCompiler._strip_top_level_order_by(
+                        inner
                     )
                     result.append(inner)
                 else:
@@ -634,6 +651,42 @@ class ExcelCompiler(compiler.SQLCompiler):
                 i += 1
 
         return "".join(result)
+
+    @staticmethod
+    def _strip_top_level_order_by(sql: str) -> str:
+        """Remove the last top-level ORDER BY from *sql*.
+
+        Walks the string tracking parenthesis depth.  Only an ``ORDER BY``
+        token found at depth 0 is treated as branch-local and stripped
+        (along with everything after it).  An ``ORDER BY`` inside any
+        parenthesized group (e.g. a subquery) is left untouched.
+        """
+        upper = sql.upper()
+        depth = 0
+        last_top_order: int | None = None
+        search_start = 0
+        # Scan for top-level ORDER BY positions (paren depth == 0).
+        while True:
+            pos = upper.find("ORDER", search_start)
+            if pos == -1:
+                break
+            # Update paren depth up to this position.
+            for k in range(search_start, pos):
+                if sql[k] == "(":
+                    depth += 1
+                elif sql[k] == ")":
+                    depth -= 1
+            if depth == 0:
+                # Verify it's ORDER BY (not part of an identifier).
+                after_order = pos + 5
+                rest = upper[after_order:].lstrip()
+                if rest.startswith("BY"):
+                    if pos == 0 or not upper[pos - 1].isalnum():
+                        last_top_order = pos
+            search_start = pos + 5
+        if last_top_order is not None:
+            return sql[:last_top_order].rstrip()
+        return sql
 
     def visit_over(
         self,

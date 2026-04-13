@@ -1166,3 +1166,51 @@ def test_strip_compound_branch_parens_unit() -> None:
     assert ExcelCompiler._strip_compound_branch_parens(
         "SELECT id FROM t1 UNION SELECT id FROM t2"
     ) == "SELECT id FROM t1 UNION SELECT id FROM t2"
+
+    # Multi-column ORDER BY is fully stripped.
+    result = ExcelCompiler._strip_compound_branch_parens(
+        "(SELECT id, name FROM t1 ORDER BY name ASC, id DESC) UNION SELECT id, name FROM t2"
+    )
+    assert result == "SELECT id, name FROM t1 UNION SELECT id, name FROM t2"
+
+    # Function-expression ORDER BY (e.g. ORDER BY count(id) DESC) is stripped.
+    result = ExcelCompiler._strip_compound_branch_parens(
+        "(SELECT count(id) FROM t1 ORDER BY count(id) DESC) UNION SELECT count(id) FROM t2"
+    )
+    assert "ORDER BY" not in result
+    assert "count(id)" in result  # function call in SELECT preserved
+
+    # Unwrapped branch with IN (SELECT ...) — subquery parens preserved.
+    result = ExcelCompiler._strip_compound_branch_parens(
+        "SELECT id FROM t1 WHERE id IN (SELECT user_id FROM orders) "
+        "UNION SELECT id FROM t2"
+    )
+    assert "IN (SELECT user_id FROM orders)" in result
+
+    # Wrapped branch with nested subquery ORDER BY — only outer ORDER BY stripped.
+    result = ExcelCompiler._strip_compound_branch_parens(
+        "(SELECT id FROM t1 WHERE id IN "
+        "(SELECT user_id FROM orders ORDER BY user_id) "
+        "ORDER BY id DESC) UNION SELECT id FROM t2"
+    )
+    assert "IN (SELECT user_id FROM orders ORDER BY user_id)" in result
+    assert not result.startswith("(")
+    # The trailing branch-level ORDER BY id DESC should be gone.
+    assert result.endswith("UNION SELECT id FROM t2")
+
+
+def test_compound_unwrapped_in_subquery_preserved(tmp_xlsx: str) -> None:
+    """Unwrapped branch with IN (SELECT ...) preserves subquery parens."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    # No branch-local ORDER BY — no parens wrapping — subquery must survive.
+    subq = select(orders.c.user_id).scalar_subquery()
+    sub1 = select(users.c.id).where(users.c.id.in_(subq))
+    sub2 = select(users.c.id)
+    stmt = sa.union(sub1, sub2)
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    assert "IN (SELECT" in sql
+
+    engine.dispose()
