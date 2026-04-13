@@ -692,8 +692,11 @@ class ExcelCompiler(compiler.SQLCompiler):
                 after_order = pos + 5
                 rest = upper[after_order:].lstrip()
                 if rest.startswith("BY"):
-                    if pos == 0 or not (upper[pos - 1].isalnum() or upper[pos - 1] == "_"):
-                        last_top_order = pos
+                    # Verify BY is a complete token (not part of
+                    # an identifier like orderby_col).
+                    if len(rest) <= 2 or not (rest[2].isalnum() or rest[2] == "_"):
+                        if pos == 0 or not (upper[pos - 1].isalnum() or upper[pos - 1] == "_"):
+                            last_top_order = pos
             search_start = pos + 5
         if last_top_order is None:
             return sql

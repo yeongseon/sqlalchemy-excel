@@ -1316,6 +1316,18 @@ def test_strip_top_level_order_by_preserves_limit() -> None:
     )
     assert result == "SELECT id FROM t LIMIT ? OFFSET ?"
 
+    # Identifier 'orderby_col' must not be matched as ORDER BY.
+    result = ExcelCompiler._strip_top_level_order_by(
+        "SELECT orderby_col FROM t LIMIT 5"
+    )
+    assert result == "SELECT orderby_col FROM t LIMIT 5"
+
+    # Identifier 'reorder' must not be matched.
+    result = ExcelCompiler._strip_top_level_order_by(
+        "SELECT reorder FROM t"
+    )
+    assert result == "SELECT reorder FROM t"
+
 
 def test_has_top_level_limit_offset_identifier_boundary() -> None:
     """_has_top_level_limit_offset must not match identifiers containing LIMIT/OFFSET."""
