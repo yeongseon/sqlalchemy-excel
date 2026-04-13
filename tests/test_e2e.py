@@ -1091,3 +1091,39 @@ def test_e2e_compound_with_outer_order_by_and_limit(tmp_path) -> None:
         assert rows == [(3,), (2,)]
 
     engine.dispose()
+
+
+def test_e2e_compound_with_branch_local_limit(tmp_path) -> None:
+    """Branch-local LIMIT restricts rows from that branch only."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    users = _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+                {"id": 3, "name": "Charlie", "age": 35},
+            ],
+        )
+
+    t = Table("users", MetaData(), autoload_with=engine)
+    with engine.connect() as conn:
+        # Branch 1: all users with id <= 3 (all 3 rows)
+        # Branch 2: users ordered by id DESC, LIMIT 1 → only id=3
+        # UNION ALL → [1, 2, 3] + [3] = [1, 2, 3, 3]
+        stmt = sa.union_all(
+            select(t.c.id).where(t.c.id <= 3),
+            select(t.c.id).order_by(t.c.id.desc()).limit(1),
+        )
+        rows = conn.execute(stmt).all()
+        ids = sorted(r[0] for r in rows)
+        # Without branch-local LIMIT, branch 2 would contribute all 3 rows.
+        # With branch-local LIMIT 1, branch 2 contributes only 1 row.
+        assert len(rows) == 4  # 3 from branch 1 + 1 from branch 2
+        assert ids == [1, 2, 3, 3]
+
+    engine.dispose()

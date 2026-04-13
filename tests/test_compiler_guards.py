@@ -1198,22 +1198,24 @@ def test_strip_compound_branch_parens_unit() -> None:
     # The trailing branch-level ORDER BY id DESC should be gone.
     assert result.endswith("UNION SELECT id FROM t2")
 
-    # Branch-local ORDER BY stripped but LIMIT preserved.
+    # Branch-local ORDER BY + LIMIT: both kept in parens.
     result = ExcelCompiler._strip_compound_branch_parens(
         "(SELECT id FROM t1 ORDER BY id DESC LIMIT 5) UNION SELECT id FROM t2"
     )
-    assert "ORDER BY" not in result
+    assert "ORDER BY id DESC" in result
     assert "LIMIT 5" in result
-    assert not result.startswith("(")
+    # Parens kept so parser handles ORDER BY + LIMIT as branch-local.
+    assert result.startswith("(SELECT")
 
-    # Branch-local ORDER BY stripped but LIMIT + OFFSET preserved.
+    # Branch-local ORDER BY + LIMIT + OFFSET: all kept in parens.
     result = ExcelCompiler._strip_compound_branch_parens(
         "(SELECT id FROM t1 ORDER BY id DESC LIMIT 5 OFFSET 2) UNION SELECT id FROM t2"
     )
-    assert "ORDER BY" not in result
+    assert "ORDER BY id DESC" in result
     assert "LIMIT 5" in result
     assert "OFFSET 2" in result
-    assert not result.startswith("(")
+    # Parens kept so parser handles ORDER BY + LIMIT + OFFSET as branch-local.
+    assert result.startswith("(SELECT")
 
 
 def test_compound_unwrapped_in_subquery_preserved(tmp_xlsx: str) -> None:
@@ -1234,7 +1236,7 @@ def test_compound_unwrapped_in_subquery_preserved(tmp_xlsx: str) -> None:
 
 
 def test_compound_branch_limit_preserved(tmp_xlsx: str) -> None:
-    """Branch-local ORDER BY is stripped but LIMIT is preserved."""
+    """Branch with ORDER BY + LIMIT: both kept in parens for correct semantics."""
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, _ = _build_tables(metadata)
@@ -1243,16 +1245,17 @@ def test_compound_branch_limit_preserved(tmp_xlsx: str) -> None:
     sub2 = select(users.c.id)
     stmt = sa.union(sub1, sub2)
     sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
-    # ORDER BY must be stripped, but LIMIT must be preserved.
-    assert "ORDER BY" not in sql
+    # Both ORDER BY and LIMIT must be preserved inside parens.
+    assert "ORDER BY" in sql
     assert "LIMIT" in sql
-    assert not sql.startswith("(SELECT")
+    # Parens kept so parser treats ORDER BY + LIMIT as branch-local.
+    assert "(SELECT" in sql
 
     engine.dispose()
 
 
 def test_compound_branch_limit_offset_preserved(tmp_xlsx: str) -> None:
-    """Branch-local ORDER BY is stripped but LIMIT + OFFSET are preserved."""
+    """Branch with ORDER BY + LIMIT + OFFSET: all kept in parens."""
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, _ = _build_tables(metadata)
@@ -1261,11 +1264,12 @@ def test_compound_branch_limit_offset_preserved(tmp_xlsx: str) -> None:
     sub2 = select(users.c.id)
     stmt = sa.union(sub1, sub2)
     sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
-    # ORDER BY must be stripped, but LIMIT and OFFSET must be preserved.
-    assert "ORDER BY" not in sql
+    # All three clauses must be preserved inside parens.
+    assert "ORDER BY" in sql
     assert "LIMIT" in sql
     assert "OFFSET" in sql
-    assert not sql.startswith("(SELECT")
+    # Parens kept so parser treats all as branch-local.
+    assert "(SELECT" in sql
 
     engine.dispose()
 

@@ -635,13 +635,22 @@ class ExcelCompiler(compiler.SQLCompiler):
                 )
 
                 if is_branch:
-                    # Strip branch-local ORDER BY in a paren-aware
-                    # way: only match ORDER BY at depth-0 within the
-                    # inner SQL so nested subquery ORDER BY is kept.
-                    inner = ExcelCompiler._strip_top_level_order_by(
-                        inner
-                    )
-                    result.append(inner)
+                    # If the branch has LIMIT/OFFSET, the parser
+                    # can handle the full form inside parens
+                    # (ORDER BY + LIMIT/OFFSET), so keep parens
+                    # intact to preserve both ordering and limiting
+                    # semantics.
+                    if ExcelCompiler._has_top_level_limit_offset(inner):
+                        result.append("(" + inner + ")")
+                    else:
+                        # No LIMIT/OFFSET — strip branch-local
+                        # ORDER BY (which is semantically meaningless
+                        # in compound queries without LIMIT) and
+                        # remove the wrapper parens.
+                        inner = ExcelCompiler._strip_top_level_order_by(
+                            inner
+                        )
+                        result.append(inner)
                 else:
                     # Not a branch wrapper — preserve as-is.
                     result.append(sql[i:j])
@@ -722,6 +731,31 @@ class ExcelCompiler(compiler.SQLCompiler):
         if after.strip():
             return before + " " + after.lstrip()
         return before
+
+    @staticmethod
+    def _has_top_level_limit_offset(sql: str) -> bool:
+        """Return True if *sql* contains a top-level LIMIT or OFFSET."""
+        upper = sql.upper()
+        for keyword in ("LIMIT", "OFFSET"):
+            depth = 0
+            scan = 0
+            while True:
+                kp = upper.find(keyword, scan)
+                if kp == -1:
+                    break
+                for k in range(scan, kp):
+                    if sql[k] == "(":
+                        depth += 1
+                    elif sql[k] == ")":
+                        depth -= 1
+                if depth == 0:
+                    # Not part of an identifier.
+                    if kp == 0 or not upper[kp - 1].isalnum():
+                        after_kw = kp + len(keyword)
+                        if after_kw >= len(upper) or not upper[after_kw].isalnum():
+                            return True
+                scan = kp + len(keyword)
+        return False
 
     def visit_over(
         self,
