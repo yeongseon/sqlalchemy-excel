@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.2] - 2026-04-13
+
+### Added
+- Compiler support for UNION, UNION ALL, INTERSECT, EXCEPT set operations
+- Compiler and end-to-end tests for all compound query types
+
+### Changed
+- `visit_compound_select()` now delegates to base SQLAlchemy compiler instead of rejecting
+
 ## [0.5.1] - 2026-04-13
 
 ### Added

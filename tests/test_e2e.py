@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy import (
     Column,
     Integer,
@@ -590,6 +591,134 @@ def test_e2e_distinct_compiles_and_executes(tmp_path) -> None:
         names = [r[0] for r in rows]
         assert sorted(names) == ["Alice", "Bob"]
 
+    engine.dispose()
+
+
+def test_union_e2e(tmp_path) -> None:
+    db = tmp_path / "test.xlsx"
+    engine = create_engine(f"excel:///{db}")
+    metadata = MetaData()
+    sheet1 = Table(
+        "Sheet1",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+    )
+    sheet2 = Table(
+        "Sheet2",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(sheet1), [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}])
+        conn.execute(insert(sheet2), [{"id": 2, "name": "Bob"}, {"id": 3, "name": "Cara"}])
+
+    t1 = Table("Sheet1", MetaData(), autoload_with=engine)
+    t2 = Table("Sheet2", MetaData(), autoload_with=engine)
+    stmt = sa.union(select(t1.c.id, t1.c.name), select(t2.c.id, t2.c.name))
+    with engine.connect() as conn:
+        rows = conn.execute(stmt).all()
+
+    assert sorted(rows) == [(1, "Alice"), (2, "Bob"), (3, "Cara")]
+    engine.dispose()
+
+
+def test_union_all_e2e(tmp_path) -> None:
+    db = tmp_path / "test.xlsx"
+    engine = create_engine(f"excel:///{db}")
+    metadata = MetaData()
+    sheet1 = Table(
+        "Sheet1",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+    )
+    sheet2 = Table(
+        "Sheet2",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(sheet1), [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}])
+        conn.execute(insert(sheet2), [{"id": 2, "name": "Bob"}, {"id": 3, "name": "Cara"}])
+
+    t1 = Table("Sheet1", MetaData(), autoload_with=engine)
+    t2 = Table("Sheet2", MetaData(), autoload_with=engine)
+    stmt = sa.union_all(select(t1.c.id, t1.c.name), select(t2.c.id, t2.c.name))
+    with engine.connect() as conn:
+        rows = conn.execute(stmt).all()
+
+    assert sorted(rows) == [(1, "Alice"), (2, "Bob"), (2, "Bob"), (3, "Cara")]
+    engine.dispose()
+
+
+def test_intersect_e2e(tmp_path) -> None:
+    db = tmp_path / "test.xlsx"
+    engine = create_engine(f"excel:///{db}")
+    metadata = MetaData()
+    sheet1 = Table(
+        "Sheet1",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+    )
+    sheet2 = Table(
+        "Sheet2",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(sheet1), [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}])
+        conn.execute(insert(sheet2), [{"id": 2, "name": "Bob"}, {"id": 3, "name": "Cara"}])
+
+    t1 = Table("Sheet1", MetaData(), autoload_with=engine)
+    t2 = Table("Sheet2", MetaData(), autoload_with=engine)
+    stmt = sa.intersect(select(t1.c.id, t1.c.name), select(t2.c.id, t2.c.name))
+    with engine.connect() as conn:
+        rows = conn.execute(stmt).all()
+
+    assert rows == [(2, "Bob")]
+    engine.dispose()
+
+
+def test_except_e2e(tmp_path) -> None:
+    db = tmp_path / "test.xlsx"
+    engine = create_engine(f"excel:///{db}")
+    metadata = MetaData()
+    sheet1 = Table(
+        "Sheet1",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+    )
+    sheet2 = Table(
+        "Sheet2",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(sheet1), [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}])
+        conn.execute(insert(sheet2), [{"id": 2, "name": "Bob"}, {"id": 3, "name": "Cara"}])
+
+    t1 = Table("Sheet1", MetaData(), autoload_with=engine)
+    t2 = Table("Sheet2", MetaData(), autoload_with=engine)
+    stmt = sa.except_(select(t1.c.id, t1.c.name), select(t2.c.id, t2.c.name))
+    with engine.connect() as conn:
+        rows = conn.execute(stmt).all()
+
+    assert rows == [(1, "Alice")]
     engine.dispose()
 
 

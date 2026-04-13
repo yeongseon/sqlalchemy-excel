@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy import (
     Column,
     Index,
@@ -18,7 +19,6 @@ from sqlalchemy import (
     func,
     insert,
     select,
-    union_all,
 )
 from sqlalchemy.engine import make_url
 from sqlalchemy.schema import (
@@ -167,14 +167,50 @@ def test_compiler_rejects_count_string_literal(tmp_xlsx: str) -> None:
     engine.dispose()
 
 
-def test_compiler_rejects_union(tmp_xlsx: str) -> None:
+def test_union_compiles(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
     users, _ = _build_tables(metadata)
 
-    stmt = union_all(select(users.c.id), select(users.c.id))
-    with pytest.raises(exc.CompileError, match=r"UNION|INTERSECT|EXCEPT"):
-        stmt.compile(dialect=engine.dialect)
+    stmt = sa.union(select(users.c.id), select(users.c.id))
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    assert sql == "SELECT id FROM users UNION SELECT id FROM users"
+
+    engine.dispose()
+
+
+def test_union_all_compiles(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    stmt = sa.union_all(select(users.c.id), select(users.c.id))
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    assert sql == "SELECT id FROM users UNION ALL SELECT id FROM users"
+
+    engine.dispose()
+
+
+def test_intersect_compiles(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    stmt = sa.intersect(select(users.c.id), select(users.c.id))
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    assert sql == "SELECT id FROM users INTERSECT SELECT id FROM users"
+
+    engine.dispose()
+
+
+def test_except_compiles(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, _ = _build_tables(metadata)
+
+    stmt = sa.except_(select(users.c.id), select(users.c.id))
+    sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
+    assert sql == "SELECT id FROM users EXCEPT SELECT id FROM users"
 
     engine.dispose()
 

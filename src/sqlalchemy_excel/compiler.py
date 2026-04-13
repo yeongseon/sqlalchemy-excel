@@ -13,7 +13,7 @@ Supported:
     DELETE FROM table [WHERE ...]
 
     Rejected (raises CompileError):
-    CTEs, UNION/INTERSECT/EXCEPT, window functions, RETURNING, FOR UPDATE, NOT IN,
+    CTEs, window functions, RETURNING, FOR UPDATE, NOT IN,
     FULL OUTER JOIN, non-equality/OR/non-column ON clauses
 
     Partially supported:
@@ -565,8 +565,14 @@ class ExcelCompiler(compiler.SQLCompiler):
         compound_index: Any = None,
         **kwargs: Any,
     ) -> str:
-        raise exc.CompileError(
-            "Excel dialect does not support UNION/INTERSECT/EXCEPT"
+        visit_compound_select = cast(
+            "Callable[..., str]", super().visit_compound_select
+        )
+        return visit_compound_select(
+            cs,
+            asfrom=asfrom,
+            compound_index=compound_index,
+            **kwargs,
         )
 
     def visit_over(

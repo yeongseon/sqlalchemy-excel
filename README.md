@@ -34,7 +34,8 @@ Before writing any code, understand the dialect's capabilities and limits:
 | INNER / LEFT / RIGHT JOIN (equality ON) | ✅ (constrained) |
 | Chained JOINs (3+ tables) | ✅ (constrained) |
 | **FULL OUTER JOIN** | ❌ |
-| **CTEs / UNION / INTERSECT / EXCEPT** | ❌ |
+| CTEs | ❌ |
+| UNION / UNION ALL / INTERSECT / EXCEPT | ✅ |
 | **Window functions (OVER)** | ❌ |
 | **ALTER TABLE** | ❌ |
 | **Foreign keys / indexes** | ❌ |

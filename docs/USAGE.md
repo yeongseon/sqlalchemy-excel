@@ -187,6 +187,28 @@ right_join_shape = select(orders.c.id, users.c.name).select_from(
 )
 ```
 
+### Compound Set Operations (UNION / INTERSECT / EXCEPT)
+
+```python
+import sqlalchemy as sa
+from sqlalchemy import select
+
+left = select(users.c.id, users.c.name)
+right = select(admins.c.id, admins.c.name)
+
+# Deduplicated union
+stmt_union = sa.union(left, right)
+
+# Keep duplicates
+stmt_union_all = sa.union_all(left, right)
+
+# Rows present in both queries
+stmt_intersect = sa.intersect(left, right)
+
+# Rows in left query but not right query
+stmt_except = sa.except_(left, right)
+```
+
 ## Insert, Update, and Delete
 
 ### Insert
@@ -310,7 +332,7 @@ sqlalchemy-excel has some limitations due to the nature of Excel as a database:
 
 - **Constrained JOIN support**: INNER/LEFT/RIGHT join shapes and chained joins are supported with equality ON clauses (`t1.col = t2.col`). FULL OUTER JOIN, OR/non-equality ON clauses, and non-column operands are rejected.
 - **Non-correlated subqueries only**: Subqueries supported only in `WHERE ... IN (SELECT ...)`. No correlated, nested, or DML subqueries.
-- **No CTEs, UNION, INTERSECT, EXCEPT**: Only simple SELECT/INSERT/UPDATE/DELETE.
+- **No CTEs**: CTE queries are not supported.
 - **No window functions**: `OVER` clause raises `CompileError`.
 - **No ALTER TABLE**: Cannot modify table structure after creation.
 - **No foreign keys or indexes**: Excel has no concept of these.
