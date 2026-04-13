@@ -12,6 +12,7 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
+        excel-dbapi-version: ["0.4.1", "latest", "main"]
 
     steps:
       - uses: actions/checkout@v6
@@ -23,6 +24,13 @@ jobs:
 
       - name: Install dependencies
         run: |
+          if [ "${{ matrix.excel-dbapi-version }}" = "0.4.1" ]; then
+            pip install excel-dbapi==0.4.1
+          elif [ "${{ matrix.excel-dbapi-version }}" = "main" ]; then
+            pip install git+https://github.com/yeongseon/excel-dbapi.git@main
+          else
+            pip install excel-dbapi
+          fi
           pip install -e ".[dev,graph]"
 
       - name: Lint
