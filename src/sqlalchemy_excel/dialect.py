@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import warnings
 from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import unquote as _url_unquote
 
@@ -29,6 +30,19 @@ def _after_create(
     """Write column metadata after CREATE TABLE (Excel dialect only)."""
     if connection.dialect.name != "excel":
         return
+
+    for col in target.columns:
+        if col.server_default is not None:
+            warnings.warn(
+                "Excel dialect does not support server_default; value will be ignored",
+                stacklevel=2,
+            )
+        if col.autoincrement is True:
+            warnings.warn(
+                "Excel dialect does not support autoincrement=True; value must be set explicitly",
+                stacklevel=2,
+            )
+
     import excel_dbapi
 
     raw_conn = connection.connection.dbapi_connection
@@ -97,6 +111,14 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
     supports_views: bool = False
     supports_native_boolean: bool = True
     supports_native_decimal: bool = False
+    # NOTE(issue #59): keep statement cache disabled for now.
+    #
+    # ExcelCompiler mutates traversal-scoped state (`_has_join`, `_in_in_clause`,
+    # `_subquery_depth`) while rendering SQL. Those flags directly affect emitted
+    # text (for example whether columns are table-qualified). The current
+    # implementation appears deterministic for equivalent statement trees, but we
+    # keep cache opt-in conservative until we have dedicated cache-key
+    # determinism coverage for these stateful paths.
     supports_statement_cache: bool = False
     supports_default_values: bool = False
     supports_default_metavalue: bool = False
@@ -325,6 +347,7 @@ class ExcelGraphDialect(ExcelDialect):  # type: ignore[misc,unused-ignore]
     """
 
     driver: str = "graph"
+    # Shares the same compiler state model as ExcelDialect.
     supports_statement_cache: bool = False
 
     def create_connect_args(self, url: URL) -> ConnectArgsType:
