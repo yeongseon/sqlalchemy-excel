@@ -66,6 +66,81 @@ def test_compiler_join_compiles(tmp_xlsx: str) -> None:
     engine.dispose()
 
 
+def test_compiler_arithmetic_multiplication(tmp_xlsx: str) -> None:
+    """Arithmetic multiplication in SELECT should compile correctly."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = sa.select((orders.c.user_id * orders.c.id).label("total"))
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert "user_id * id" in sql
+    assert "AS total" in sql
+
+    engine.dispose()
+
+
+def test_compiler_arithmetic_addition(tmp_xlsx: str) -> None:
+    """Arithmetic addition in SELECT should compile correctly."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = sa.select(orders.c.user_id + orders.c.id)
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert "user_id + id" in sql
+
+    engine.dispose()
+
+
+def test_compiler_arithmetic_complex_expression(tmp_xlsx: str) -> None:
+    """Complex arithmetic with parentheses should compile correctly."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = sa.select(((orders.c.user_id + orders.c.id) * users.c.id).label("result"))
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert "(user_id + id) * id" in sql
+    assert "AS result" in sql
+
+    engine.dispose()
+
+
+def test_compiler_arithmetic_unary_negation(tmp_xlsx: str) -> None:
+    """Unary negation should compile correctly."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = sa.select((-orders.c.user_id).label("neg"))
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert "-user_id" in sql.lower() or "- user_id" in sql.lower()
+
+    engine.dispose()
+
+
+def test_compiler_arithmetic_with_join(tmp_xlsx: str) -> None:
+    """Arithmetic in SELECT with JOIN should use qualified column names."""
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    stmt = (
+        sa.select((users.c.id * orders.c.user_id).label("product"))
+        .join(orders, users.c.id == orders.c.user_id)
+    )
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = " ".join(str(compiled).split())
+    assert "users.id * orders.user_id" in sql
+
+    engine.dispose()
+
+
 def test_compiler_cte_returning_for_update_guards(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()

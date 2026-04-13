@@ -56,6 +56,29 @@ def _employees_table(metadata: MetaData) -> Table:
     )
 
 
+def _arithmetic_table(metadata: MetaData) -> Table:
+    return Table(
+        "arith",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("price", Integer),
+        Column("qty", Integer),
+        Column("tax", Integer),
+    )
+
+
+def _seed_arithmetic_data(engine: sa.engine.Engine, table: Table) -> None:
+    with engine.begin() as conn:
+        conn.execute(
+            insert(table),
+            [
+                {"id": 1, "price": 100, "qty": 5, "tax": 10},
+                {"id": 2, "price": 200, "qty": 3, "tax": 20},
+                {"id": 3, "price": 300, "qty": 0, "tax": 30},
+            ],
+        )
+
+
 def test_e2e_core_crud_round_trip(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
@@ -479,6 +502,181 @@ def test_e2e_column_alias(tmp_path) -> None:
         assert "a" in keys
         rows = result.all()
         assert len(rows) == 2
+
+    engine.dispose()
+
+
+def test_e2e_arithmetic_multiplication(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    arith = _arithmetic_table(metadata)
+    metadata.create_all(engine)
+    _seed_arithmetic_data(engine, arith)
+
+    with engine.connect() as conn:
+        stmt = sa.select((arith.c.price * arith.c.qty).label("total")).order_by(arith.c.id)
+        result = conn.execute(stmt)
+        rows = result.fetchall()
+        assert rows == [(500,), (600,), (0,)]
+
+    engine.dispose()
+
+
+def test_e2e_arithmetic_addition(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    arith = _arithmetic_table(metadata)
+    metadata.create_all(engine)
+    _seed_arithmetic_data(engine, arith)
+
+    with engine.connect() as conn:
+        stmt = sa.select((arith.c.price + arith.c.tax).label("sum")).order_by(arith.c.id)
+        result = conn.execute(stmt)
+        rows = result.fetchall()
+        assert rows == [(110,), (220,), (330,)]
+
+    engine.dispose()
+
+
+def test_e2e_arithmetic_subtraction(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    arith = _arithmetic_table(metadata)
+    metadata.create_all(engine)
+    _seed_arithmetic_data(engine, arith)
+
+    with engine.connect() as conn:
+        stmt = sa.select((arith.c.price - arith.c.tax).label("diff")).order_by(arith.c.id)
+        result = conn.execute(stmt)
+        rows = result.fetchall()
+        assert rows == [(90,), (180,), (270,)]
+
+    engine.dispose()
+
+
+def test_e2e_arithmetic_complex_expression(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    arith = _arithmetic_table(metadata)
+    metadata.create_all(engine)
+    _seed_arithmetic_data(engine, arith)
+
+    with engine.connect() as conn:
+        stmt = sa.select(((arith.c.price + arith.c.tax) * arith.c.qty).label("total")).order_by(
+            arith.c.id
+        )
+        result = conn.execute(stmt)
+        rows = result.fetchall()
+        assert rows == [(550,), (660,), (0,)]
+
+    engine.dispose()
+
+
+def test_e2e_arithmetic_unary_negation(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    arith = _arithmetic_table(metadata)
+    metadata.create_all(engine)
+    _seed_arithmetic_data(engine, arith)
+
+    with engine.connect() as conn:
+        stmt = sa.select((-arith.c.price).label("neg")).order_by(arith.c.id)
+        result = conn.execute(stmt)
+        rows = result.fetchall()
+        assert rows == [(-100,), (-200,), (-300,)]
+
+    engine.dispose()
+
+
+def test_e2e_arithmetic_with_alias(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    arith = _arithmetic_table(metadata)
+    metadata.create_all(engine)
+    _seed_arithmetic_data(engine, arith)
+
+    with engine.connect() as conn:
+        stmt = sa.select((arith.c.price * arith.c.qty).label("custom_name")).order_by(arith.c.id)
+        result = conn.execute(stmt)
+        cursor = result.cursor
+        assert cursor is not None
+        assert cursor.description is not None
+        assert [desc[0] for desc in cursor.description] == ["custom_name"]
+        rows = result.fetchall()
+        assert rows == [(500,), (600,), (0,)]
+
+    engine.dispose()
+
+
+def test_e2e_arithmetic_with_where(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    arith = _arithmetic_table(metadata)
+    metadata.create_all(engine)
+    _seed_arithmetic_data(engine, arith)
+
+    with engine.connect() as conn:
+        stmt = (
+            sa.select((arith.c.price * arith.c.qty).label("total"))
+            .where(arith.c.qty > 0)
+            .order_by(arith.c.id)
+        )
+        result = conn.execute(stmt)
+        rows = result.fetchall()
+        assert rows == [(500,), (600,)]
+
+    engine.dispose()
+
+
+def test_e2e_arithmetic_null_propagation(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    arith = _arithmetic_table(metadata)
+    metadata.create_all(engine)
+    _seed_arithmetic_data(engine, arith)
+
+    with engine.begin() as conn:
+        conn.execute(insert(arith).values(id=4, price=None, qty=2, tax=10))
+
+    with engine.connect() as conn:
+        stmt = sa.select((arith.c.price * arith.c.qty).label("total")).where(arith.c.id == 4)
+        result = conn.execute(stmt)
+        rows = result.fetchall()
+        assert rows == [(None,)]
+
+    engine.dispose()
+
+
+def test_e2e_arithmetic_with_literal(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    arith = _arithmetic_table(metadata)
+    metadata.create_all(engine)
+    _seed_arithmetic_data(engine, arith)
+
+    with engine.connect() as conn:
+        stmt = sa.select((arith.c.price * sa.literal_column("2")).label("doubled")).order_by(
+            arith.c.id
+        )
+        result = conn.execute(stmt)
+        rows = result.fetchall()
+        assert rows == [(200,), (400,), (600,)]
+
+    engine.dispose()
+
+
+def test_e2e_arithmetic_order_by_alias(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    arith = _arithmetic_table(metadata)
+    metadata.create_all(engine)
+    _seed_arithmetic_data(engine, arith)
+
+    with engine.connect() as conn:
+        stmt = sa.select((arith.c.price * arith.c.qty).label("total")).order_by(sa.text("total"))
+        result = conn.execute(stmt)
+        rows = result.fetchall()
+        assert rows == [(0,), (500,), (600,)]
 
     engine.dispose()
 
@@ -2214,6 +2412,30 @@ def test_e2e_select_star_mixed_columns_rejected(tmp_path) -> None:
             )
         )
         with pytest.raises(exc.ProgrammingError):
+            conn.execute(stmt)
+
+    engine.dispose()
+
+
+def test_e2e_aggregate_with_arithmetic_arg_rejected(tmp_path) -> None:
+    """SUM(price * qty) via SA is rejected by the compiler guard."""
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    products = Table(
+        "products",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("price", Integer),
+        Column("qty", Integer),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(products).values(id=1, price=10, qty=3))
+
+    with engine.connect() as conn:
+        stmt = sa.select(sa.func.sum(products.c.price * products.c.qty))
+        with pytest.raises(exc.CompileError):
             conn.execute(stmt)
 
     engine.dispose()
