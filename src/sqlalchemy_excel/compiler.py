@@ -47,6 +47,7 @@ if TYPE_CHECKING:
 
 
 _SUPPORTED_FUNCTIONS = {"count", "sum", "avg", "min", "max"}
+_BARE_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
 class ExcelIdentifierPreparer(compiler.IdentifierPreparer):
@@ -60,10 +61,19 @@ class ExcelIdentifierPreparer(compiler.IdentifierPreparer):
         super().__init__(dialect, initial_quote="", final_quote="")
         self.reserved_words = set()
 
+    @staticmethod
+    def _validate_identifier(ident: str) -> None:
+        if not _BARE_IDENTIFIER_RE.fullmatch(ident):
+            raise exc.CompileError(
+                "Excel dialect identifiers must match [A-Za-z_][A-Za-z0-9_]*"
+            )
+
     def quote_identifier(self, value: str) -> str:
+        self._validate_identifier(value)
         return value
 
     def quote(self, ident: str, force: Any = None) -> str:
+        self._validate_identifier(ident)
         return ident
 
 

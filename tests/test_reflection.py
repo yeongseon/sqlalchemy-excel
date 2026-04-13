@@ -13,6 +13,8 @@ from sqlalchemy import (
     inspect,
 )
 
+from sqlalchemy_excel.reflection import _sa_type_from_name
+
 
 @pytest.fixture
 def metadata():
@@ -91,6 +93,9 @@ class TestGetColumns:
         for col in columns:
             assert "type" in col
             assert col["type"] is not None
+
+    def test_real_type_name_maps_to_float(self):
+        assert isinstance(_sa_type_from_name("REAL"), Float)
 
 
 class TestGetPKConstraint:

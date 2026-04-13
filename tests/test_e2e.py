@@ -3368,6 +3368,23 @@ def test_e2e_alter_table_add_column(tmp_path) -> None:
     engine.dispose()
 
 
+def test_e2e_alter_table_add_float_column_reflects_as_float(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    metadata = MetaData()
+    _users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.connect() as conn:
+        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN score FLOAT")
+        conn.commit()
+
+    columns = inspect(engine).get_columns("users")
+    score = next(col for col in columns if col["name"] == "score")
+    assert isinstance(score["type"], sa.Float)
+
+    engine.dispose()
+
+
 def test_e2e_alter_table_drop_column(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()

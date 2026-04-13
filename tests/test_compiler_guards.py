@@ -447,6 +447,8 @@ def test_compiler_visit_label_and_group_by_paths(tmp_xlsx: str) -> None:
     preparer = engine.dialect.identifier_preparer
     assert preparer.quote_identifier("users") == "users"
     assert preparer.quote("users") == "users"
+    with pytest.raises(exc.CompileError, match=r"\[A-Za-z_\]\[A-Za-z0-9_\]\*"):
+        preparer.quote_identifier("bad name")
 
     engine.dispose()
 
@@ -504,6 +506,23 @@ def test_dialect_autocommit_query_parsing_and_no_params_execution() -> None:
     cursor = CursorStub()
     dialect.do_execute_no_params(cursor, "SELECT   1\nFROM   users")
     assert cursor.calls == [("SELECT 1 FROM users", None)]
+
+    cursor_quotes = CursorStub()
+    dialect.do_execute_no_params(
+        cursor_quotes,
+        "SELECT   'a   b', \"x   y\"   FROM\t users  WHERE  id = 1",
+    )
+    assert cursor_quotes.calls == [
+        ('SELECT \'a   b\', "x   y" FROM users WHERE id = 1', None)
+    ]
+
+    cursor_params = CursorStub()
+    dialect.do_execute(
+        cursor_params,
+        "SELECT   'a   b'  FROM\t users  WHERE  id = ?",
+        (1,),
+    )
+    assert cursor_params.calls == [("SELECT 'a   b' FROM users WHERE id = ?", (1,))]
 
     assert dialect._check_unicode_returns(connection=None) is True
     assert dialect._check_unicode_description(connection=None) is True

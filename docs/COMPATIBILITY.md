@@ -44,8 +44,10 @@ adaptation) and `excel-dbapi` (execution engine and workbook semantics).
 `sqlalchemy-excel` does not provide full ACID transactional guarantees.
 
 - `Session.commit()` persists changes to the workbook as expected.
-- `Session.rollback()` is effectively a no-op for local workbook writes in
-  standard usage; treat writes as durable once executed.
+- `Session.rollback()` for local workbooks (`engine=openpyxl` with
+  `autocommit=False`) restores the latest committed snapshot.
+- Graph backend connections (`engine=graph`) do not support rollback and treat
+  rollback calls as a no-op.
 - Use a single-writer model. Concurrent writes to the same workbook are not
   supported and can lead to conflicts/corruption.
 - If you need strict transaction isolation, rollback guarantees, and
@@ -101,11 +103,12 @@ Practical guidance:
 
 - No CTE support.
 - No window functions (`OVER`).
-- No `ALTER TABLE` migration primitives.
+- `ALTER TABLE` supports `ADD COLUMN`, `DROP COLUMN`, and `RENAME COLUMN`.
 - No foreign key/index enforcement.
 - No correlated subqueries.
 - Constrained JOIN `ON` clauses (equality joins across sources).
 - No concurrent multi-writer guarantees.
-- `Session.rollback()` does not provide traditional database rollback semantics.
+- Rollback semantics depend on backend (`openpyxl` snapshot/restore;
+  `graph` no rollback support).
 
 When these limitations are blockers, prefer a traditional database backend.

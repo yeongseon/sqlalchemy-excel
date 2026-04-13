@@ -83,6 +83,14 @@ class TestConnectArgs:
         assert kwargs["autocommit"] is False
         engine.dispose()
 
+    def test_connect_args_percent_decodes_local_path(self):
+        engine = create_engine("excel:///placeholder.xlsx")
+        dialect = engine.dialect
+        url = make_url("excel:///folder%20name/test%20file.xlsx")
+        _, kwargs = dialect.create_connect_args(url)
+        assert kwargs["file_path"] == "folder name/test file.xlsx"
+        engine.dispose()
+
 
 class TestConnection:
     """Test basic connection operations."""

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import warnings
 from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import unquote as _url_unquote
@@ -79,8 +78,48 @@ def _after_drop(
 
 
 # Register DDL events globally for all Table objects
-event.listen(Table, "after_create", _after_create)
-event.listen(Table, "after_drop", _after_drop)
+event.listen(Table, "after_create", _after_create, propagate=False)
+event.listen(Table, "after_drop", _after_drop, propagate=False)
+
+
+def _normalize_statement_whitespace_quote_aware(statement: str) -> str:
+    out: list[str] = []
+    in_quote = False
+    quote_char = ""
+    i = 0
+    length = len(statement)
+
+    while i < length:
+        ch = statement[i]
+
+        if in_quote:
+            out.append(ch)
+            if ch == quote_char:
+                if i + 1 < length and statement[i + 1] == quote_char:
+                    out.append(statement[i + 1])
+                    i += 1
+                else:
+                    in_quote = False
+            i += 1
+            continue
+
+        if ch in ("'", '"'):
+            in_quote = True
+            quote_char = ch
+            out.append(ch)
+            i += 1
+            continue
+
+        if ch.isspace():
+            if out and out[-1] != " ":
+                out.append(" ")
+            i += 1
+            continue
+
+        out.append(ch)
+        i += 1
+
+    return "".join(out).strip()
 
 
 class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleMethodOverride]
@@ -153,7 +192,7 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
             excel:////absolute/path.xlsx  →  file_path="/absolute/path.xlsx"
         """
         # url.database contains the path after the third slash
-        file_path = url.database
+        file_path = _url_unquote(url.database) if url.database else None
         if not file_path:
             raise ValueError("No file path in URL. Use excel:///path/to/file.xlsx")
 
@@ -193,7 +232,7 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
         context: Any = None,
     ) -> None:
         """Execute a statement, normalizing whitespace for excel-dbapi."""
-        normalized = re.sub(r"\s+", " ", statement).strip()
+        normalized = _normalize_statement_whitespace_quote_aware(statement)
         cursor.execute(normalized, parameters)
         self._sync_alter_table_metadata(cursor, normalized)
 
@@ -204,7 +243,7 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
         context: Any = None,
     ) -> None:
         """Execute a statement with no parameters."""
-        normalized = re.sub(r"\s+", " ", statement).strip()
+        normalized = _normalize_statement_whitespace_quote_aware(statement)
         cursor.execute(normalized, None)
         self._sync_alter_table_metadata(cursor, normalized)
 

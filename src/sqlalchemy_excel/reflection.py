@@ -14,6 +14,7 @@ _TYPE_MAP: dict[str, type[sa_types.TypeEngine[Any]]] = {
     "TEXT": sa_types.String,
     "INTEGER": sa_types.Integer,
     "FLOAT": sa_types.Float,
+    "REAL": sa_types.Float,
     "BOOLEAN": sa_types.Boolean,
     "DATE": sa_types.Date,
     "DATETIME": sa_types.DateTime,
