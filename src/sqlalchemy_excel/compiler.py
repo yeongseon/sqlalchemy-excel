@@ -6,7 +6,7 @@ excel-dbapi's parser understands:
 Supported:
     SELECT columns FROM table [WHERE ...] [GROUP BY ...] [HAVING ...] [ORDER BY col [ASC|DESC]] [LIMIT n] [OFFSET n]
     SELECT DISTINCT columns FROM table [WHERE ...] ...
-    SELECT cols FROM t1 [INNER|LEFT] JOIN t2 ON t1.col = t2.col [AND t1.c2 = t2.c2 ...] [WHERE ...] [ORDER BY ...] [LIMIT n] [OFFSET n]
+    SELECT cols FROM t1 [INNER|LEFT|RIGHT] JOIN t2 ON ... { JOIN t3 ON ... } [WHERE ...] [ORDER BY ...] [LIMIT n] [OFFSET n]
     INSERT INTO table (cols) VALUES (vals), (vals2), ...
     INSERT INTO table (cols) SELECT cols FROM source [WHERE ...]
     UPDATE table SET col=val [WHERE ...]
@@ -14,7 +14,7 @@ Supported:
 
     Rejected (raises CompileError):
     CTEs, window functions, RETURNING, FOR UPDATE, NOT IN,
-    FULL OUTER JOIN, non-equality/OR/non-column ON clauses
+    FULL OUTER JOIN, CROSS JOIN, NATURAL JOIN, non-equality/OR/non-column ON clauses
 
     Partially supported:
     non-correlated subqueries in WHERE ... IN (SELECT single_col FROM table [WHERE ...])
