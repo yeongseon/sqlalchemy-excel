@@ -380,7 +380,7 @@ sqlalchemy-excel maps SQLAlchemy types to Excel storage types:
 sqlalchemy-excel has some limitations due to the nature of Excel as a database:
 
 - **Constrained JOIN support**: INNER/LEFT/RIGHT/FULL OUTER join shapes, CROSS JOIN, and chained joins are supported. `ON` clauses are limited to equality comparisons between columns from different join sources (`t1.col = t2.col`, `AND`-combined).
-- **Non-correlated subqueries only**: Subqueries supported in `WHERE ... IN (SELECT ...)` for SELECT, UPDATE, and DELETE. No correlated or nested subqueries.
+- **Non-correlated subqueries only**: Subqueries supported in `WHERE ... IN (SELECT ...)` for SELECT, UPDATE, and DELETE. No correlated or nested subqueries. **Note**: Subqueries in `WHERE ... IN` are not supported when either the outer query or the inner subquery contains a JOIN.
 - **No CTEs**: CTE queries are not supported.
 - **No window functions**: `OVER` clause raises `CompileError`.
 - **ALTER TABLE**: Supports `ADD COLUMN`, `DROP COLUMN`, and `RENAME COLUMN` via raw SQL through the driver.

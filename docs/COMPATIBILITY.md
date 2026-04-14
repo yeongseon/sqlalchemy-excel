@@ -35,7 +35,7 @@ adaptation) and `excel-dbapi` (execution engine and workbook semantics).
 | JOIN support (constrained equality ON clauses) | Yes | No | Yes | Dialect validates/compiles shape; driver executes SQL |
 | Aggregates + `GROUP BY`/`HAVING` | Yes | No | Yes | Dialect enables and guards unsupported forms |
 | Set operations (`UNION`, `INTERSECT`, `EXCEPT`) | Yes | No | Yes | Requires compiler support plus parser/execution support |
-| Non-correlated subqueries (`WHERE ... IN (SELECT ...)`) | Yes | No | Yes | Correlated subqueries remain unsupported |
+| Non-correlated subqueries (`WHERE ... IN (SELECT ...)`) | Yes | No | Yes | Correlated subqueries remain unsupported. JOIN restriction: not supported when outer or inner query contains JOIN. |
 | Transaction controls (`commit`/`rollback`) | Yes | Yes | Partial | Driver semantics dominate behavior in practice |
 | Graph dialect (`excel+graph`) | Yes | Yes | Yes | Dialect URL and options + remote backend behavior |
 

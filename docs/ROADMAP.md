@@ -19,7 +19,7 @@
 - Aggregation: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`
 - `GROUP BY` and `HAVING`
 - `DISTINCT` (single-table queries)
-- Non-correlated subqueries in `WHERE ... IN` (for `SELECT`, `UPDATE`, `DELETE`)
+- Non-correlated subqueries in `WHERE ... IN` (for `SELECT`, `UPDATE`, `DELETE`; not supported with JOINs)
 - Join surface: `INNER`, `LEFT`, `RIGHT` shape, `FULL OUTER`, `CROSS`, chained joins
 - Compound queries: `UNION`, `UNION ALL`, `INTERSECT`, `EXCEPT`
 - `CASE WHEN` expressions and arithmetic expressions
