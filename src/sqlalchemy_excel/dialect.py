@@ -34,7 +34,13 @@ def _after_create(
         return
 
     for col in target.columns:
-        if col.server_default is not None:
+        # Skip server_default warning if column has Computed or Identity,
+        # as those are already warned in DDL compilation
+        if (
+            col.server_default is not None
+            and getattr(col, "computed", None) is None
+            and getattr(col, "identity", None) is None
+        ):
             warnings.warn(
                 "Excel dialect does not support server_default; value will be ignored",
                 stacklevel=2,
@@ -44,16 +50,8 @@ def _after_create(
                 "Excel dialect does not support autoincrement=True; value must be set explicitly",
                 stacklevel=2,
             )
-        if getattr(col, "computed", None) is not None:
-            warnings.warn(
-                f"Column '{col.name}': Computed columns are not supported by excel dialect; the expression will be ignored",
-                stacklevel=2,
-            )
-        if getattr(col, "identity", None) is not None:
-            warnings.warn(
-                f"Column '{col.name}': Identity columns are not supported by excel dialect; auto-increment will not be applied",
-                stacklevel=2,
-            )
+        # Skip Computed and Identity warnings here - they're already warned in DDL compilation
+        # to avoid duplicate warnings
 
     import excel_dbapi
 

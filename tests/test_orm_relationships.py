@@ -4,7 +4,7 @@ Supported today:
 - one-to-many inserts and joined eager loading
 
 Known limitations:
-- lazy relationship loading can return incorrect results
+- many-to-many relationship loading can return incorrect results
 - many-to-many relationship loaders generate SQL patterns the backend can't parse
 """
 
@@ -113,9 +113,6 @@ def test_one_to_many_relationship_round_trip(relationship_engine: Engine) -> Non
         assert [child.name for child in parent.children] == ["child-1", "child-2"]
 
 
-@pytest.mark.xfail(
-    reason="Lazy one-to-many loaders currently return empty collections with this backend.",
-)
 def test_one_to_many_lazy_loading_boundary(relationship_engine: Engine) -> None:
     with Session(relationship_engine) as session:
         session.add(

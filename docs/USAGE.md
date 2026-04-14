@@ -386,7 +386,7 @@ sqlalchemy-excel has some limitations due to the nature of Excel as a database:
 - **ALTER TABLE**: Supports `ADD COLUMN`, `DROP COLUMN`, and `RENAME COLUMN` via raw SQL through the driver.
 - **Raw CREATE/DROP reflection**: Raw `CREATE TABLE` writes declared schema metadata and raw `DROP TABLE` removes it.
 - **Schema guards scope**: Schema validation guards apply only to SQLAlchemy-compiled SQL. Raw SQL sent through `exec_driver_sql()` is forwarded directly to excel-dbapi without schema validation.
-- **ORM relationship limits**: Lazy one-to-many relationship loading can return empty collections; use eager loading (`joinedload`) for reliable one-to-many reads.
+- **ORM relationship limits**: Simple one-to-many lazy loading now works correctly. Use eager loading (`joinedload`) for more complex relationship patterns.
 - **Many-to-many loading is unsupported**: Association table persistence works, but relationship loader SQL for many-to-many is not fully supported.
 - **No foreign keys or indexes**: Excel has no concept of these.
 - **UNIQUE/CHECK/FOREIGN KEY are not enforced**: They are accepted for SQLAlchemy compatibility, ignored by the backend, and compile-time warnings are emitted for `CREATE TABLE` and `ALTER TABLE ... ADD COLUMN`.
