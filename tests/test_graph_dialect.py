@@ -169,3 +169,22 @@ class TestGraphDialectIntegration:
             assert len(rows) == 1
             assert rows[0] == ("Alice",)
         engine.dispose()
+
+
+class TestGraphRollbackNoOp:
+    """do_rollback should swallow NotSupportedError on graph connections."""
+
+    def test_rollback_is_noop_on_graph(self):
+        """Graph backend connections treat rollback as no-op."""
+        transport = httpx.MockTransport(_graph_handler)
+        engine = create_engine(
+            "excel+graph:///drv-test/itm-test",
+            connect_args={
+                "credential": "test-token",
+                "transport": transport,
+            },
+        )
+        with engine.connect() as conn:
+            # Rollback should not raise — dialect swallows NotSupportedError
+            conn.rollback()
+        engine.dispose()

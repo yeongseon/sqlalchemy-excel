@@ -1649,3 +1649,36 @@ def test_strip_compound_branch_parens_double_wrapped_grouped() -> None:
     result = ExcelCompiler._strip_compound_branch_parens(double_wrapped)
     # Passes through completely unchanged.
     assert result == double_wrapped
+
+
+def test_cross_join_no_sa_warning(tmp_xlsx: str) -> None:
+    """CROSS JOIN must not emit SAWarning about cartesian products."""
+    import warnings
+
+    import sqlalchemy as sa
+    from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
+
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    meta = MetaData()
+    t1 = Table("a", meta, Column("id", Integer), Column("x", String))
+    t2 = Table("b", meta, Column("id", Integer), Column("y", String))
+    meta.create_all(engine)
+    with engine.connect() as conn:
+        conn.execute(t1.insert(), [{"id": 1, "x": "v"}])
+        conn.execute(t2.insert(), [{"id": 1, "y": "w"}])
+        conn.commit()
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with engine.connect() as conn:
+            j = t1.join(t2, sa.true())
+            stmt = sa.select(t1.c.id, t2.c.y).select_from(j)
+            rows = conn.execute(stmt).fetchall()
+            assert rows == [(1, "w")]
+
+    cartesian_warnings = [
+        w for w in caught if "cartesian" in str(w.message).lower()
+    ]
+    assert cartesian_warnings == [], (
+        f"CROSS JOIN should not emit cartesian warning: {cartesian_warnings}"
+    )

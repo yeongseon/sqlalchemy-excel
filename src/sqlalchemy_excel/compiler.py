@@ -35,6 +35,7 @@ The compiler detects JOIN context and switches between the two modes automatical
 
 from __future__ import annotations
 
+import itertools
 import re
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -383,13 +384,22 @@ class ExcelCompiler(compiler.SQLCompiler):
             and not join.full
             and not join.isouter
         ):
-            # Intentional cartesian product -- suppress from_linter to
-            # avoid SAWarning about missing join conditions.
+            # Intentional cartesian product — register edges so the
+            # FROM-linter treats both sides as connected (no spurious
+            # SAWarning) while still detecting genuinely disconnected
+            # FROM elements elsewhere in the statement.
+            if from_linter:
+                from_linter.edges.update(
+                    itertools.product(
+                        join.left._from_objects,
+                        join.right._from_objects,
+                    )
+                )
             left = str(
                 join.left._compiler_dispatch(
                     self,
                     asfrom=True,
-                    from_linter=None,
+                    from_linter=from_linter,
                     **kwargs,
                 )
             )
@@ -397,7 +407,7 @@ class ExcelCompiler(compiler.SQLCompiler):
                 join.right._compiler_dispatch(
                     self,
                     asfrom=True,
-                    from_linter=None,
+                    from_linter=from_linter,
                     **kwargs,
                 )
             )

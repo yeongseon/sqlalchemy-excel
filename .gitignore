@@ -42,3 +42,4 @@ Thumbs.db
 # Test artifacts
 *.xlsx
 !tests/fixtures/*.xlsx
+*.xlsx.lock
