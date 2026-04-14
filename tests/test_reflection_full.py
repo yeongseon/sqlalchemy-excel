@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from openpyxl import load_workbook
 from sqlalchemy import create_engine, exc, inspect, text
 
 
@@ -74,5 +75,49 @@ def test_reflection_cleans_stale_metadata_when_sheet_is_missing(tmp_path) -> Non
 
         raw_conn = conn.connection.dbapi_connection
         assert excel_dbapi.read_table_metadata(raw_conn, "ghost") is None
+
+    engine.dispose()
+
+
+def test_reflection_rebuilds_columns_when_metadata_headers_are_stale(tmp_path) -> None:
+    workbook_path = tmp_path / "reflection.xlsx"
+    engine = create_engine(f"excel:///{workbook_path}")
+
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE users (id INTEGER, name TEXT)"))
+
+    workbook = load_workbook(workbook_path)
+    worksheet = workbook["users"]
+    worksheet["A1"] = "user_id"
+    worksheet["B1"] = "full_name"
+    worksheet["C1"] = "nickname"
+    workbook.save(workbook_path)
+
+    engine.dispose()
+    engine = create_engine(f"excel:///{workbook_path}")
+
+    inspector = inspect(engine)
+    columns = inspector.get_columns("users")
+    assert [column["name"] for column in columns] == [
+        "user_id",
+        "full_name",
+        "nickname",
+    ]
+
+    engine.dispose()
+
+
+def test_table_scoped_reflection_methods_raise_for_missing_table(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+    inspector = inspect(engine)
+
+    with pytest.raises(exc.NoSuchTableError):
+        inspector.get_foreign_keys("missing")
+    with pytest.raises(exc.NoSuchTableError):
+        inspector.get_indexes("missing")
+    with pytest.raises(exc.NoSuchTableError):
+        inspector.get_unique_constraints("missing")
+    with pytest.raises(exc.NoSuchTableError):
+        inspector.get_check_constraints("missing")
 
     engine.dispose()

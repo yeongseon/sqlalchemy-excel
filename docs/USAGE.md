@@ -28,6 +28,36 @@ engine = create_engine("excel:////Users/alice/Documents/data.xlsx")
 engine = create_engine("excel:///data.xlsx", connect_args={"engine": "openpyxl"})
 ```
 
+## URL Query Parameters
+
+The dialect forwards selected URL query parameters to `excel_dbapi.connect(...)`.
+
+Supported boolean query parameters:
+
+- `data_only`
+- `sanitize_formulas`
+- `create`
+- `file_locking`
+- `autocommit`
+
+`engine` is also accepted as a string query parameter.
+
+```python
+from sqlalchemy import create_engine
+
+engine = create_engine(
+    "excel:///data.xlsx?data_only=true&sanitize_formulas=true"
+)
+
+engine = create_engine(
+    "excel:///data.xlsx?create=false&file_locking=true&autocommit=false"
+)
+
+engine = create_engine("excel:///data.xlsx?engine=openpyxl")
+```
+
+Boolean values accept `true/false`, `1/0`, and `yes/no` (case-insensitive).
+
 **Important**: Absolute paths require **four slashes** total (`excel:////absolute/path.xlsx`).
 
 > **Source checkout note**: In development/source mode (without an installed entry point), import `sqlalchemy_excel` before `create_engine(...)` so SQLAlchemy registers `excel://` and `excel+graph://` dialects.
@@ -358,7 +388,7 @@ sqlalchemy-excel has some limitations due to the nature of Excel as a database:
 - **ORM relationship limits**: Lazy one-to-many relationship loading can return empty collections; use eager loading (`joinedload`) for reliable one-to-many reads.
 - **Many-to-many loading is unsupported**: Association table persistence works, but relationship loader SQL for many-to-many is not fully supported.
 - **No foreign keys or indexes**: Excel has no concept of these.
-- **UNIQUE/CHECK are not enforced**: They are accepted for SQLAlchemy compatibility, ignored by the backend, and compile-time warnings are emitted for `CREATE TABLE` and `ALTER TABLE ... ADD COLUMN`.
+- **UNIQUE/CHECK/FOREIGN KEY are not enforced**: They are accepted for SQLAlchemy compatibility, ignored by the backend, and compile-time warnings are emitted for `CREATE TABLE` and `ALTER TABLE ... ADD COLUMN`.
 - **Identifier restrictions**: Table and column names must match `[A-Za-z_][A-Za-z0-9_]*`.
 - **No concurrent writes**: Use a single-writer model.
 - **Rollback**: Partial support — works with the openpyxl backend when `autocommit=False` (snapshot/restore semantics). The Graph API backend treats rollback as a no-op.

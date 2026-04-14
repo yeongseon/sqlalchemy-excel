@@ -11,7 +11,7 @@ import warnings
 from typing import Any
 
 from sqlalchemy import exc
-from sqlalchemy.schema import CheckConstraint, UniqueConstraint
+from sqlalchemy.schema import CheckConstraint, ForeignKeyConstraint, UniqueConstraint
 from sqlalchemy.sql import compiler
 
 
@@ -24,6 +24,7 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
         context_msg: str,
         seen_unique: set[tuple[str, ...]],
         seen_check: set[str],
+        seen_foreign_key: set[tuple[str, ...]],
     ) -> None:
         if column.unique is True:
             key = (column.name,)
@@ -54,6 +55,17 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
                     )
                     seen_check.add(check_key)
 
+        if column.foreign_keys:
+            fk_key = tuple(
+                sorted(str(fk.target_fullname) for fk in column.foreign_keys)
+            )
+            if fk_key not in seen_foreign_key:
+                warnings.warn(
+                    f"Excel dialect does not enforce FOREIGN KEY constraints ({context_msg})",
+                    stacklevel=2,
+                )
+                seen_foreign_key.add(fk_key)
+
     @staticmethod
     def _warn_unsupported_generated_columns(column: Any) -> None:
         if getattr(column, "computed", None) is not None:
@@ -66,6 +78,11 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
                 f"Column '{column.name}': Identity columns are not supported by excel dialect; auto-increment will not be applied",
                 stacklevel=2,
             )
+
+    @staticmethod
+    def _raise_if_schema_qualified(table: Any) -> None:
+        if getattr(table, "schema", None) is not None:
+            raise exc.CompileError("Excel dialect does not support schemas")
 
     def _format_alter_table_name(self, operation: Any) -> str:
         schema = getattr(operation, "schema", None)
@@ -93,6 +110,7 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
         Format: CREATE TABLE name (col1 TYPE, col2 TYPE, ...)
         """
         table = create.element
+        self._raise_if_schema_qualified(table)
         table_name = self.preparer.format_table(table)
 
         columns = []
@@ -103,6 +121,7 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
         inline_pk = len(pk_columns) == 1
         seen_unique: set[tuple[str, ...]] = set()
         seen_check: set[str] = set()
+        seen_foreign_key: set[tuple[str, ...]] = set()
         for col in table.columns:
             col_name = self.preparer.format_column(col)
             col_type = self.dialect.type_compiler.process(col.type)
@@ -116,6 +135,7 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
                 context_msg="CREATE TABLE",
                 seen_unique=seen_unique,
                 seen_check=seen_check,
+                seen_foreign_key=seen_foreign_key,
             )
             self._warn_unsupported_generated_columns(col)
             suffix = f" {' '.join(constraints)}" if constraints else ""
@@ -141,12 +161,25 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
                         stacklevel=2,
                     )
                     seen_check.add(check_key)
+            if isinstance(constraint, ForeignKeyConstraint):
+                fk_key = tuple(
+                    sorted(
+                        str(element.target_fullname) for element in constraint.elements
+                    )
+                )
+                if fk_key not in seen_foreign_key:
+                    warnings.warn(
+                        "Excel dialect does not enforce FOREIGN KEY constraints (CREATE TABLE)",
+                        stacklevel=2,
+                    )
+                    seen_foreign_key.add(fk_key)
 
         return f"CREATE TABLE {table_name} ({', '.join(columns)})"
 
     def visit_drop_table(self, drop: Any, **kw: Any) -> str:
         """Compile DROP TABLE."""
         table = drop.element
+        self._raise_if_schema_qualified(table)
         table_name = self.preparer.format_table(table)
         return f"DROP TABLE {table_name}"
 
@@ -168,6 +201,7 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
             context_msg="ALTER TABLE ADD COLUMN",
             seen_unique=set(),
             seen_check=set(),
+            seen_foreign_key=set(),
         )
         self._warn_unsupported_generated_columns(column)
         suffix = f" {' '.join(constraints)}" if constraints else ""

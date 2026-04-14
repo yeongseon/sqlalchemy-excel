@@ -158,6 +158,24 @@ def test_compiler_cte_returning_for_update_guards(tmp_xlsx: str) -> None:
     engine.dispose()
 
 
+def test_compiler_rejects_schema_qualified_tables_for_dml(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users = Table(
+        "users",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        schema="myschema",
+    )
+
+    with pytest.raises(exc.CompileError, match="does not support schemas"):
+        select(users.c.id).compile(dialect=engine.dialect)
+    with pytest.raises(exc.CompileError, match="does not support schemas"):
+        insert(users).values(id=1).compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
 def test_multi_row_insert_compiles(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()

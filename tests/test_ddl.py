@@ -6,11 +6,13 @@ import pytest
 from sqlalchemy import (
     CheckConstraint,
     Column,
+    ForeignKey,
     Integer,
     MetaData,
     String,
     Table,
     UniqueConstraint,
+    exc,
     inspect,
 )
 from sqlalchemy.schema import CreateTable, DropTable
@@ -90,6 +92,35 @@ class TestDDLCompilation:
         assert any("CHECK" in message for message in messages)
         assert "UNIQUE" not in sql
         assert "CHECK" not in sql
+
+    def test_create_table_warns_for_unsupported_foreign_key(self, engine, metadata):
+        Table(
+            "parents",
+            metadata,
+            Column("id", Integer, primary_key=True),
+        )
+        children = Table(
+            "children",
+            metadata,
+            Column("id", Integer, primary_key=True),
+            Column("parent_id", Integer, ForeignKey("parents.id")),
+        )
+
+        with pytest.warns(UserWarning, match="FOREIGN KEY"):
+            str(CreateTable(children).compile(dialect=engine.dialect)).strip()
+
+    def test_schema_qualified_table_compile_raises(self, engine, metadata):
+        users = Table(
+            "users",
+            metadata,
+            Column("id", Integer, primary_key=True),
+            schema="myschema",
+        )
+
+        with pytest.raises(exc.CompileError, match="does not support schemas"):
+            str(CreateTable(users).compile(dialect=engine.dialect))
+        with pytest.raises(exc.CompileError, match="does not support schemas"):
+            str(DropTable(users).compile(dialect=engine.dialect))
 
     def test_create_table_deduplicates_unique_warning_for_same_column(
         self, engine, metadata

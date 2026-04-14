@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from sqlalchemy import Column, Integer, MetaData, String, Table, inspect
+from sqlalchemy import Column, Integer, MetaData, String, Table, exc, insert, inspect
 from sqlalchemy.sql.ddl import ExecutableDDLElement
 
 
@@ -86,6 +86,38 @@ def test_alter_table_add_column_with_constraints_reflection_round_trip(engine) -
     external_id = next(col for col in columns if col["name"] == "external_id")
     assert external_id["nullable"] is False
     assert "external_id" in inspector.get_pk_constraint("users")["constrained_columns"]
+
+
+def test_alter_table_add_not_null_column_to_non_empty_table_raises(engine) -> None:
+    metadata = MetaData()
+    users = _create_users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+
+    with engine.begin() as conn, pytest.raises(exc.CompileError, match="non-empty"):
+        conn.execute(AddColumn("users", Column("email", String, nullable=False)))
+
+    columns = [col["name"] for col in inspect(engine).get_columns("users")]
+    assert "email" not in columns
+
+
+def test_alter_table_add_primary_key_column_to_non_empty_table_raises(engine) -> None:
+    metadata = MetaData()
+    users = _create_users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+
+    with engine.begin() as conn, pytest.raises(exc.CompileError, match="non-empty"):
+        conn.execute(
+            AddColumn("users", Column("external_id", Integer, primary_key=True))
+        )
+
+    pk_columns = inspect(engine).get_pk_constraint("users")["constrained_columns"]
+    assert pk_columns == ["id"]
 
 
 def test_alter_table_add_column_warns_for_unsupported_unique(engine) -> None:

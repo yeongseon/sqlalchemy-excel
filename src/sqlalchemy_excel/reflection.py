@@ -77,17 +77,14 @@ class ExcelInspectionMixin:
         """
         import excel_dbapi
 
-        raw_conn = connection.connection.dbapi_connection
+        raw_conn = self._raw_connection(connection)
         table_exists = cast("bool", excel_dbapi.has_table(raw_conn, table_name))
-
-        # Try metadata sheet first
-        meta = excel_dbapi.read_table_metadata(raw_conn, table_name)
-        if meta is not None and not table_exists:
-            excel_dbapi.remove_table_metadata(raw_conn, table_name)
-            meta = None
-
         if not table_exists:
+            self._clear_stale_metadata_if_present(raw_conn, table_name)
             raise NoSuchTableError(table_name)
+
+        header_names = self._worksheet_header_names(raw_conn, table_name)
+        meta = self._validated_metadata(raw_conn, table_name, header_names)
 
         if meta is not None:
             return [
@@ -126,15 +123,14 @@ class ExcelInspectionMixin:
         """Return primary key constraint info from the metadata sheet."""
         import excel_dbapi
 
-        raw_conn = connection.connection.dbapi_connection
+        raw_conn = self._raw_connection(connection)
         table_exists = cast("bool", excel_dbapi.has_table(raw_conn, table_name))
-        meta = excel_dbapi.read_table_metadata(raw_conn, table_name)
-        if meta is not None and not table_exists:
-            excel_dbapi.remove_table_metadata(raw_conn, table_name)
-            meta = None
-
         if not table_exists:
+            self._clear_stale_metadata_if_present(raw_conn, table_name)
             raise NoSuchTableError(table_name)
+
+        header_names = self._worksheet_header_names(raw_conn, table_name)
+        meta = self._validated_metadata(raw_conn, table_name, header_names)
 
         if meta is not None:
             pk_cols = [col["name"] for col in meta if col.get("primary_key", False)]
@@ -151,6 +147,7 @@ class ExcelInspectionMixin:
         **kw: Any,
     ) -> list[dict[str, Any]]:
         """Excel does not support foreign keys."""
+        self._assert_table_exists(connection, table_name)
         return []
 
     def get_indexes(
@@ -161,6 +158,7 @@ class ExcelInspectionMixin:
         **kw: Any,
     ) -> list[dict[str, Any]]:
         """Excel does not support indexes."""
+        self._assert_table_exists(connection, table_name)
         return []
 
     def get_unique_constraints(
@@ -171,6 +169,7 @@ class ExcelInspectionMixin:
         **kw: Any,
     ) -> list[dict[str, Any]]:
         """Excel does not support unique constraints."""
+        self._assert_table_exists(connection, table_name)
         return []
 
     def get_check_constraints(
@@ -181,6 +180,7 @@ class ExcelInspectionMixin:
         **kw: Any,
     ) -> list[dict[str, Any]]:
         """Excel does not support check constraints."""
+        self._assert_table_exists(connection, table_name)
         return []
 
     def get_table_comment(
@@ -196,3 +196,64 @@ class ExcelInspectionMixin:
     def get_schema_names(self, connection: Any, **kw: Any) -> list[str]:
         """Excel does not support schemas."""
         return []
+
+    @staticmethod
+    def _raw_connection(connection: Any) -> Any:
+        return connection.connection.dbapi_connection
+
+    @staticmethod
+    def _metadata_header_matches(
+        meta: list[dict[str, Any]],
+        header_names: list[str] | None,
+    ) -> bool:
+        if header_names is None:
+            return True
+        return [col["name"] for col in meta] == header_names
+
+    def _validated_metadata(
+        self,
+        raw_conn: Any,
+        table_name: str,
+        header_names: list[str] | None,
+    ) -> list[dict[str, Any]] | None:
+        import excel_dbapi
+
+        meta = excel_dbapi.read_table_metadata(raw_conn, table_name)
+        if meta is None:
+            return None
+
+        if not self._metadata_header_matches(meta, header_names):
+            excel_dbapi.remove_table_metadata(raw_conn, table_name)
+            return None
+
+        return meta
+
+    @staticmethod
+    def _clear_stale_metadata_if_present(raw_conn: Any, table_name: str) -> None:
+        import excel_dbapi
+
+        meta = excel_dbapi.read_table_metadata(raw_conn, table_name)
+        if meta is not None:
+            excel_dbapi.remove_table_metadata(raw_conn, table_name)
+
+    @staticmethod
+    def _worksheet_header_names(raw_conn: Any, table_name: str) -> list[str] | None:
+        workbook = getattr(raw_conn, "workbook", None)
+        if workbook is None:
+            return None
+
+        worksheet = workbook[table_name]
+        headers: list[str] = []
+        for index in range(1, worksheet.max_column + 1):
+            value = worksheet.cell(row=1, column=index).value
+            if value is not None:
+                headers.append(str(value))
+        return headers
+
+    def _assert_table_exists(self, connection: Any, table_name: str) -> None:
+        import excel_dbapi
+
+        raw_conn = self._raw_connection(connection)
+        if not cast("bool", excel_dbapi.has_table(raw_conn, table_name)):
+            self._clear_stale_metadata_if_present(raw_conn, table_name)
+            raise NoSuchTableError(table_name)

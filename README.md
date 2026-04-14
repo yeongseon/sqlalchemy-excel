@@ -44,7 +44,7 @@ Before writing any code, understand the dialect's capabilities and limits:
 | **ALTER TABLE** | ✅ (ADD/DROP/RENAME COLUMN) |
 | Raw DDL metadata sync (`text()` / `exec_driver_sql()`) | ✅ (`CREATE TABLE` / `ALTER TABLE` / `DROP TABLE`) |
 | **Foreign keys / indexes** | ❌ |
-| **UNIQUE / CHECK enforcement** | ❌ (accepted for compatibility; compile-time warnings are emitted for CREATE TABLE and ALTER TABLE ADD COLUMN) |
+| **UNIQUE / CHECK / FOREIGN KEY enforcement** | ❌ (accepted for compatibility; compile-time warnings are emitted for CREATE TABLE and ALTER TABLE ADD COLUMN) |
 | **Concurrent writes** | ❌ |
 | **Session.rollback()** | Partial (openpyxl with autocommit=False; graph: no-op) |
 
@@ -102,6 +102,11 @@ engine = create_engine("excel:////home/user/data.xlsx")
 
 # With engine options
 engine = create_engine("excel:///data.xlsx", connect_args={"engine": "openpyxl"})
+
+# URL query forwarding to excel-dbapi
+engine = create_engine(
+    "excel:///data.xlsx?data_only=true&sanitize_formulas=true&create=true&file_locking=false"
+)
 ```
 
 ## Type Mapping

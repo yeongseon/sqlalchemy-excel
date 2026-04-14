@@ -10,6 +10,7 @@ from urllib.parse import unquote as _url_unquote
 
 from sqlalchemy import event, pool
 from sqlalchemy.engine import default
+from sqlalchemy.exc import CompileError
 from sqlalchemy.schema import Table
 
 from .compiler import ExcelCompiler, ExcelIdentifierPreparer
@@ -368,6 +369,7 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
     ) -> None:
         """Execute a statement, normalizing whitespace for excel-dbapi."""
         normalized = _normalize_statement_whitespace_quote_aware(statement)
+        self._guard_alter_add_column_constraints(cursor, normalized)
         pre_alter_meta = self._read_pre_alter_metadata(cursor, normalized)
         cursor.execute(_statement_for_driver_execution(normalized), parameters)
         self._sync_create_table_metadata(cursor, normalized)
@@ -382,6 +384,7 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
     ) -> None:
         """Execute a statement with no parameters."""
         normalized = _normalize_statement_whitespace_quote_aware(statement)
+        self._guard_alter_add_column_constraints(cursor, normalized)
         pre_alter_meta = self._read_pre_alter_metadata(cursor, normalized)
         cursor.execute(_statement_for_driver_execution(normalized), None)
         self._sync_create_table_metadata(cursor, normalized)
@@ -412,6 +415,38 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
         raw_conn = cursor.connection
         current = excel_dbapi.read_table_metadata(raw_conn, table_name) or []
         return [dict(column) for column in current]
+
+    def _guard_alter_add_column_constraints(self, cursor: Any, statement: str) -> None:
+        add_match = _parse_alter_add_column(statement)
+        if add_match is None:
+            return
+
+        raw_table_name, _raw_col_name, remainder = add_match
+        tail = remainder.upper()
+        requires_existing_rows_backfill = "NOT NULL" in tail or "PRIMARY KEY" in tail
+        if not requires_existing_rows_backfill:
+            return
+
+        if self._table_has_existing_rows(cursor, raw_table_name):
+            table_name = self._unquote_identifier(raw_table_name)
+            raise CompileError(
+                "Excel dialect cannot add NOT NULL or PRIMARY KEY columns to "
+                f"non-empty table '{table_name}'"
+            )
+
+    @staticmethod
+    def _table_has_existing_rows(cursor: Any, table_name: str) -> bool:
+        cursor.execute(f"SELECT 1 FROM {table_name} LIMIT 1", None)
+
+        fetchone = getattr(cursor, "fetchone", None)
+        if callable(fetchone):
+            return fetchone() is not None
+
+        fetchall = getattr(cursor, "fetchall", None)
+        if callable(fetchall):
+            return bool(fetchall())
+
+        return False
 
     @staticmethod
     def _unquote_identifier(identifier: str) -> str:

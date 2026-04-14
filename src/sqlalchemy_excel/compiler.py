@@ -93,6 +93,41 @@ class ExcelCompiler(compiler.SQLCompiler):
     _has_join: bool = False
 
     @staticmethod
+    def _raise_if_schema_qualified(table: Any) -> None:
+        if getattr(table, "schema", None) is not None:
+            raise exc.CompileError("Excel dialect does not support schemas")
+
+    def visit_table(
+        self,
+        table: Any,
+        asfrom: bool = False,
+        iscrud: bool = False,
+        ashint: bool = False,
+        fromhints: Any = None,
+        use_schema: bool = True,
+        from_linter: Any = None,
+        ambiguous_table_name_map: Any = None,
+        enclosing_alias: Any = None,
+        **kwargs: Any,
+    ) -> str:
+        self._raise_if_schema_qualified(table)
+        return cast(
+            "str",
+            super().visit_table(
+                table,
+                asfrom=asfrom,
+                iscrud=iscrud,
+                ashint=ashint,
+                fromhints=fromhints,
+                use_schema=use_schema,
+                from_linter=from_linter,
+                ambiguous_table_name_map=ambiguous_table_name_map,
+                enclosing_alias=enclosing_alias,
+                **kwargs,
+            ),  # type: ignore[no-untyped-call]
+        )
+
+    @staticmethod
     def _is_true_onclause(onclause: Any) -> bool:
         node = onclause
         while node is not None:
@@ -376,6 +411,7 @@ class ExcelCompiler(compiler.SQLCompiler):
         *args: Any,
         **kw: Any,
     ) -> str:
+        self._raise_if_schema_qualified(insert_stmt.table)
         visit_insert = cast("Callable[..., str]", super().visit_insert)
         return str(visit_insert(insert_stmt, *args, **kw))
 

@@ -116,31 +116,43 @@ sqlalchemy-excel/
 │   ├── dialect.py            # ExcelDialect, ExcelGraphDialect
 │   ├── compiler.py           # ExcelCompiler (SQL compilation, HAVING guard)
 │   ├── ddl.py                # ExcelDDLCompiler (CREATE/DROP TABLE)
+│   ├── dml.py                # Excel INSERT ... ON CONFLICT helpers
 │   ├── types.py              # ExcelTypeCompiler (type mappings)
 │   ├── reflection.py         # ExcelInspectionMixin (schema inspection)
 │   └── py.typed              # PEP 561 marker file
-├── tests/                     # 371+ tests (>95% coverage)
+├── tests/                    # 18 test modules (400 passed, 2 xfailed)
 │   ├── conftest.py           # Shared fixtures
+│   ├── test_alter_table.py
 │   ├── test_dialect.py
 │   ├── test_compiler.py
 │   ├── test_compiler_guards.py
+│   ├── test_coverage_boost.py
 │   ├── test_ddl.py
+│   ├── test_default_guards.py
 │   ├── test_dml.py
 │   ├── test_e2e.py
 │   ├── test_graph_dialect.py
 │   ├── test_orm.py
+│   ├── test_orm_bulk.py
+│   ├── test_orm_relationships.py
 │   ├── test_reflection.py
 │   ├── test_reflection_full.py
 │   ├── test_type_compiler_full.py
-│   └── test_types.py
+│   ├── test_types.py
+│   └── test_upsert.py
 ├── docs/
 │   ├── USAGE.md              # Usage guide
 │   ├── DEVELOPMENT.md        # This file
+│   ├── COMPATIBILITY.md      # Version pairing and migration guidance
+│   ├── RELEASE_NOTES.md      # Release highlights and notes
 │   └── ROADMAP.md            # Project roadmap
 ├── pyproject.toml            # Project metadata (hatchling)
 ├── Makefile                  # Development commands
 ├── README.md
 ├── CHANGELOG.md
+├── SUPPORT.md
+├── CODE_OF_CONDUCT.md
+├── SECURITY.md
 ├── CONTRIBUTING.md
 └── LICENSE
 ```
