@@ -91,6 +91,10 @@ class ExcelCompiler(compiler.SQLCompiler):
     _in_in_clause: bool = False
     _subquery_depth: int = 0
     _has_join: bool = False
+    _SUBQUERY_BINDPARAM_ERROR = (
+        "Excel dialect does not support execution-time bind parameters in "
+        "subqueries. Use literal values instead."
+    )
 
     @staticmethod
     def _raise_if_schema_qualified(table: Any) -> None:
@@ -283,6 +287,44 @@ class ExcelCompiler(compiler.SQLCompiler):
                 raise exc.CompileError(
                     "Excel dialect does not support correlated subqueries"
                 )
+
+    def _is_unresolved_bindparam(self, bindparam: elements.BindParameter[Any]) -> bool:
+        return bool(getattr(bindparam, "required", False)) and (
+            getattr(bindparam, "callable", None) is None
+        )
+
+    def visit_bindparam(
+        self,
+        bindparam: Any,
+        within_columns_clause: Any = False,
+        literal_binds: Any = False,
+        skip_bind_expression: Any = False,
+        literal_execute: Any = False,
+        render_postcompile: Any = False,
+        is_upsert_set: Any = False,
+        **kwargs: Any,
+    ) -> str:
+        if (
+            self._subquery_depth > 0
+            and bool(literal_binds)
+            and isinstance(bindparam, elements.BindParameter)
+            and self._is_unresolved_bindparam(bindparam)
+        ):
+            raise exc.CompileError(self._SUBQUERY_BINDPARAM_ERROR)
+
+        visit_bp = cast("Callable[..., str]", super().visit_bindparam)
+        return str(
+            visit_bp(
+                bindparam,
+                within_columns_clause=within_columns_clause,
+                literal_binds=literal_binds,
+                skip_bind_expression=skip_bind_expression,
+                literal_execute=literal_execute,
+                render_postcompile=render_postcompile,
+                is_upsert_set=is_upsert_set,
+                **kwargs,
+            )
+        )
 
     def visit_function(
         self,

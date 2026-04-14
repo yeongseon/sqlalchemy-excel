@@ -148,6 +148,17 @@ class TestDDLCompilation:
         assert sql == "DROP TABLE users"
 
 
+def test_split_sql_list_quote_aware_handles_single_quoted_comma() -> None:
+    """Verify _split_sql_list_quote_aware keeps commas inside single quotes."""
+    from sqlalchemy_excel.dialect import _split_sql_list_quote_aware
+
+    sql = "id INTEGER PRIMARY KEY, note TEXT DEFAULT 'a,b' NOT NULL"
+    parts = _split_sql_list_quote_aware(sql)
+    assert len(parts) == 2
+    assert parts[0].strip() == "id INTEGER PRIMARY KEY"
+    assert "DEFAULT 'a,b'" in parts[1]
+
+
 class TestDDLExecution:
     """Test DDL statement execution (integration)."""
 

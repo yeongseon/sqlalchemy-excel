@@ -13,6 +13,7 @@ from sqlalchemy import (
     String,
     Table,
     UniqueConstraint,
+    bindparam,
     create_engine,
     distinct,
     exc,
@@ -391,6 +392,37 @@ def test_compiler_allows_not_in_subquery(tmp_xlsx: str) -> None:
     compiled = stmt.compile(dialect=engine.dialect)
     sql = str(compiled)
     assert "NOT IN" in sql
+    engine.dispose()
+
+
+def test_compiler_allows_subquery_with_inline_literal_predicate(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    sub = select(orders.c.user_id).where(orders.c.user_id == 1)
+    stmt = select(users).where(users.c.id.in_(sub))
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = str(compiled)
+    assert "IN" in sql
+    assert "= 1" in sql
+
+    engine.dispose()
+
+
+def test_compiler_rejects_unresolved_bindparam_in_subquery(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    sub = select(orders.c.user_id).where(orders.c.user_id == bindparam("user_id"))
+    stmt = select(users).where(users.c.id.in_(sub))
+    with pytest.raises(
+        exc.CompileError,
+        match="execution-time bind parameters in subqueries",
+    ):
+        stmt.compile(dialect=engine.dialect)
+
     engine.dispose()
 
 

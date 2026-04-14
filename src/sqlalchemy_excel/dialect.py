@@ -143,20 +143,22 @@ def _split_sql_list_quote_aware(sql: str) -> list[str]:
     start = 0
     depth = 0
     in_quote = False
+    quote_char = ""
     i = 0
     while i < len(sql):
         ch = sql[i]
         if in_quote:
-            if ch == '"':
-                if i + 1 < len(sql) and sql[i + 1] == '"':
+            if ch == quote_char:
+                if i + 1 < len(sql) and sql[i + 1] == quote_char:
                     i += 2
                     continue
                 in_quote = False
             i += 1
             continue
 
-        if ch == '"':
+        if ch in ("'", '"'):
             in_quote = True
+            quote_char = ch
         elif ch == "(":
             depth += 1
         elif ch == ")" and depth > 0:
@@ -193,6 +195,33 @@ def _driver_type_from_declared(type_expr: str) -> str:
 def _coerce_bool_query_value(raw: Any) -> bool:
     value = raw[0] if isinstance(raw, tuple) else raw
     return str(value).lower() in ("true", "1", "yes")
+
+
+def _strip_quoted_literals(sql: str) -> str:
+    out: list[str] = []
+    in_quote = False
+    quote_char = ""
+    i = 0
+    while i < len(sql):
+        ch = sql[i]
+        if in_quote:
+            if ch == quote_char:
+                if i + 1 < len(sql) and sql[i + 1] == quote_char:
+                    i += 2
+                    continue
+                in_quote = False
+            i += 1
+            continue
+
+        if ch in ("'", '"'):
+            in_quote = True
+            quote_char = ch
+            i += 1
+            continue
+
+        out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 def _parse_alter_add_column(statement: str) -> tuple[str, str, str] | None:
@@ -420,7 +449,7 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
             return
 
         raw_table_name, _raw_col_name, remainder = add_match
-        tail = remainder.upper()
+        tail = _strip_quoted_literals(remainder).upper()
         requires_existing_rows_backfill = "NOT NULL" in tail or "PRIMARY KEY" in tail
         if not requires_existing_rows_backfill:
             return

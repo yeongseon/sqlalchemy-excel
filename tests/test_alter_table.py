@@ -120,6 +120,39 @@ def test_alter_table_add_primary_key_column_to_non_empty_table_raises(engine) ->
     assert pk_columns == ["id"]
 
 
+def test_alter_table_add_column_with_primary_key_string_default_is_allowed(
+    engine,
+) -> None:
+    metadata = MetaData()
+    users = _create_users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN note TEXT DEFAULT 'PRIMARY KEY'"
+        )
+
+    columns = {col["name"]: col for col in inspect(engine).get_columns("users")}
+    assert "note" in columns
+    # Guard should NOT reject this — 'PRIMARY KEY' is inside a string literal,
+    # not an actual constraint. We only verify the column was added successfully.
+
+
+def test_alter_table_add_column_with_actual_not_null_still_rejected(engine) -> None:
+    metadata = MetaData()
+    users = _create_users_table(metadata)
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(insert(users).values(id=1, name="Alice", age=30))
+
+    with engine.begin() as conn, pytest.raises(exc.OperationalError, match="non-empty"):
+        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN note TEXT NOT NULL")
+
+
 def test_alter_table_add_column_warns_for_unsupported_unique(engine) -> None:
     ddl = AddColumn("users", Column("email", String, unique=True))
 
