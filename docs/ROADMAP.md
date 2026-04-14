@@ -37,11 +37,14 @@
 - Continue hardening edge cases around SQLAlchemy compilation and parser interoperability
 - Improve release notes and compatibility guidance as excel-dbapi evolves
 
+## Implemented Schema Migration Surface
+
+- `ALTER TABLE` supports `ADD COLUMN`, `DROP COLUMN`, and `RENAME COLUMN`.
+
 ## Not Planned
 
 - Full ACID transactions
 - Concurrent multi-writer semantics
-- `ALTER TABLE` / schema migration primitives
 - Foreign key enforcement and index management
 - Stored procedures and triggers
 

@@ -29,11 +29,13 @@ pip install -e ".[dev]"
 
 This installs:
 - `sqlalchemy>=2.0`
-- `excel-dbapi>=0.2.0`
+- `excel-dbapi>=0.4.1,<1.0`
 - `pytest>=8.0`
 - `pytest-cov>=4.0`
 - `ruff>=0.4`
 - `mypy>=1.10`
+- `pre-commit`
+- `build`
 
 ## Makefile Commands
 
@@ -47,6 +49,7 @@ This installs:
 | `make cov` | Run tests with coverage report (HTML + terminal) |
 | `make check` | Run lint + typecheck |
 | `make check-all` | Run lint + typecheck + tests |
+| `make ci-check` | Run version/doc sync + lint + format check + typecheck + tests (CI parity) |
 | `make build` | Build distribution packages (sdist + wheel) |
 | `make clean` | Remove build artifacts |
 | `make clean-all` | Deep clean (caches, coverage, mypy cache) |
@@ -70,7 +73,7 @@ make cov
 .venv/bin/python -m pytest tests/ -v
 ```
 
-Test coverage target: **95%+** (currently 98%).
+Test coverage target: **95%+** (currently >95%).
 
 ## Code Style
 
@@ -115,7 +118,7 @@ sqlalchemy-excel/
 │   ├── types.py              # ExcelTypeCompiler (type mappings)
 │   ├── reflection.py         # ExcelInspectionMixin (schema inspection)
 │   └── py.typed              # PEP 561 marker file
-├── tests/                     # 117 tests (98% coverage)
+├── tests/                     # 371+ tests (>95% coverage)
 │   ├── conftest.py           # Shared fixtures
 │   ├── test_dialect.py
 │   ├── test_compiler.py

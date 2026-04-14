@@ -344,7 +344,10 @@ sqlalchemy-excel has some limitations due to the nature of Excel as a database:
 - **No CTEs**: CTE queries are not supported.
 - **No window functions**: `OVER` clause raises `CompileError`.
 - **ALTER TABLE**: Supports `ADD COLUMN`, `DROP COLUMN`, and `RENAME COLUMN` via raw SQL through the driver.
+- **ORM relationship limits**: Lazy one-to-many relationship loading can return empty collections; use eager loading (`joinedload`) for reliable one-to-many reads.
+- **Many-to-many loading is unsupported**: Association table persistence works, but relationship loader SQL for many-to-many is not fully supported.
 - **No foreign keys or indexes**: Excel has no concept of these.
+- **Identifier restrictions**: Table and column names must match `[A-Za-z_][A-Za-z0-9_]*`.
 - **No concurrent writes**: Use a single-writer model.
 - **Rollback**: Partial support — works with the openpyxl backend when `autocommit=False` (snapshot/restore semantics). The Graph API backend treats rollback as a no-op.
 

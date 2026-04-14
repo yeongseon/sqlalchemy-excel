@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
 README = ROOT / "README.md"
 COMPAT = ROOT / "docs" / "COMPATIBILITY.md"
+PACKAGE_INIT = ROOT / "src" / "sqlalchemy_excel" / "__init__.py"
 
 
 def extract_excel_dbapi_spec(dependencies: list[str]) -> str | None:
@@ -31,7 +32,9 @@ def extract_project_section(pyproject_text: str) -> str:
 
 
 def extract_string_field(section: str, key: str) -> str | None:
-    match = re.search(rf'^\s*{re.escape(key)}\s*=\s*"([^"]+)"\s*$', section, re.MULTILINE)
+    match = re.search(
+        rf'^\s*{re.escape(key)}\s*=\s*"([^"]+)"\s*$', section, re.MULTILINE
+    )
     if not match:
         return None
     return match.group(1)
@@ -84,6 +87,7 @@ def main() -> int:
 
     readme_text = README.read_text(encoding="utf-8")
     compat_text = COMPAT.read_text(encoding="utf-8")
+    package_init_text = PACKAGE_INIT.read_text(encoding="utf-8")
 
     if current_version and f"Current release: `{current_version}`" not in readme_text:
         errors.append(
@@ -95,12 +99,26 @@ def main() -> int:
             f"docs/COMPATIBILITY.md matrix must include current row marker `{current_version}` (current)"
         )
 
-    if current_version and f"`sqlalchemy-excel` version: `{current_version}`" not in compat_text:
+    if (
+        current_version
+        and f'__version__ = "{current_version}"' not in package_init_text
+    ):
+        errors.append(
+            "src/sqlalchemy_excel/__init__.py fallback __version__ must match pyproject version"
+        )
+
+    if (
+        current_version
+        and f"`sqlalchemy-excel` version: `{current_version}`" not in compat_text
+    ):
         errors.append(
             "docs/COMPATIBILITY.md baseline must include current sqlalchemy-excel version"
         )
 
-    if excel_dbapi_spec and f"`excel-dbapi` requirement: `{excel_dbapi_spec}`" not in compat_text:
+    if (
+        excel_dbapi_spec
+        and f"`excel-dbapi` requirement: `{excel_dbapi_spec}`" not in compat_text
+    ):
         errors.append(
             "docs/COMPATIBILITY.md baseline must include pyproject excel-dbapi requirement"
         )
@@ -110,7 +128,10 @@ def main() -> int:
             "docs/COMPATIBILITY.md baseline must include pyproject SQLAlchemy requirement"
         )
 
-    if requires_python and f"Python requirement: `{requires_python}`" not in compat_text:
+    if (
+        requires_python
+        and f"Python requirement: `{requires_python}`" not in compat_text
+    ):
         errors.append(
             "docs/COMPATIBILITY.md baseline must include pyproject Python requirement"
         )

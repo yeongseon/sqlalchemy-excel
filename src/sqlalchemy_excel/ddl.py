@@ -66,7 +66,13 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
 
         col_name = self.preparer.format_column(column)
         col_type = self.dialect.type_compiler.process(column.type)
-        return f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"
+        constraints: list[str] = []
+        if column.nullable is False:
+            constraints.append("NOT NULL")
+        if column.primary_key is True:
+            constraints.append("PRIMARY KEY")
+        suffix = f" {' '.join(constraints)}" if constraints else ""
+        return f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}{suffix}"
 
     def visit_drop_column(self, drop: Any, **kw: Any) -> str:
         table_name = self._format_alter_table_name(drop)

@@ -65,6 +65,31 @@ def test_alter_table_add_column(engine) -> None:
     assert columns == ["id", "name", "age", "email"]
 
 
+def test_alter_table_add_column_with_constraints_reflection_round_trip(engine) -> None:
+    metadata = MetaData()
+    _create_users_table(metadata)
+    metadata.create_all(engine)
+
+    ddl = AddColumn(
+        "users",
+        Column("external_id", Integer, nullable=False, primary_key=True),
+    )
+    compiled = str(ddl.compile(dialect=engine.dialect)).strip()
+    assert (
+        compiled
+        == "ALTER TABLE users ADD COLUMN external_id INTEGER NOT NULL PRIMARY KEY"
+    )
+
+    with engine.begin() as conn:
+        conn.execute(ddl)
+
+    inspector = inspect(engine)
+    columns = inspector.get_columns("users")
+    external_id = next(col for col in columns if col["name"] == "external_id")
+    assert external_id["nullable"] is False
+    assert "external_id" in inspector.get_pk_constraint("users")["constrained_columns"]
+
+
 def test_alter_table_drop_column(engine) -> None:
     metadata = MetaData()
     _create_users_table(metadata)

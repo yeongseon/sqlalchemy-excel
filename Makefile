@@ -53,6 +53,15 @@ check-all:
 	@$(MAKE) test
 	@echo "All checks passed including tests."
 
+.PHONY: ci-check
+ci-check:
+	@$(PYTHON) scripts/check_version_sync.py
+	@$(PYTHON) -m ruff check .
+	@$(PYTHON) -m ruff format --check .
+	@$(PYTHON) -m mypy --strict src/
+	@$(PYTHON) -m pytest tests/ -v
+	@echo "CI-equivalent checks passed."
+
 .PHONY: precommit
 precommit:
 	@$(PYTHON) -m pre_commit run --all-files

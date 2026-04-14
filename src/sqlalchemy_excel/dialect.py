@@ -127,6 +127,20 @@ def _normalize_statement_whitespace_quote_aware(statement: str) -> str:
     return "".join(out).strip()
 
 
+def _statement_for_driver_execution(statement: str) -> str:
+    if not statement.upper().startswith("ALTER TABLE "):
+        return statement
+
+    tokens = statement.split()
+    if len(tokens) < 7:
+        return statement
+
+    if tokens[3].upper() == "ADD" and tokens[4].upper() == "COLUMN":
+        return " ".join(tokens[:7])
+
+    return statement
+
+
 class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleMethodOverride]
     ExcelInspectionMixin,
     default.DefaultDialect,
@@ -238,7 +252,7 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
     ) -> None:
         """Execute a statement, normalizing whitespace for excel-dbapi."""
         normalized = _normalize_statement_whitespace_quote_aware(statement)
-        cursor.execute(normalized, parameters)
+        cursor.execute(_statement_for_driver_execution(normalized), parameters)
         self._sync_alter_table_metadata(cursor, normalized)
 
     def do_execute_no_params(
@@ -249,7 +263,7 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
     ) -> None:
         """Execute a statement with no parameters."""
         normalized = _normalize_statement_whitespace_quote_aware(statement)
-        cursor.execute(normalized, None)
+        cursor.execute(_statement_for_driver_execution(normalized), None)
         self._sync_alter_table_metadata(cursor, normalized)
 
     def _sync_alter_table_metadata(self, cursor: Any, statement: str) -> None:
