@@ -187,3 +187,16 @@ class TestDDLExecution:
         insp = inspect(engine)
         tables = insp.get_table_names()
         assert "users" not in tables
+
+    def test_create_table_default_primary_key_literal_does_not_mark_pk(
+        self, engine
+    ) -> None:
+        with engine.begin() as conn:
+            conn.exec_driver_sql(
+                "CREATE TABLE users (id INTEGER, note TEXT DEFAULT 'PRIMARY KEY')"
+            )
+
+        inspector = inspect(engine)
+        columns = {column["name"]: column for column in inspector.get_columns("users")}
+        assert columns["note"]["nullable"] is True
+        assert inspector.get_pk_constraint("users")["constrained_columns"] == []

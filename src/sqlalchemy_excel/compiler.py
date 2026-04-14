@@ -49,6 +49,7 @@ from sqlalchemy.sql import (
     visitors,
 )
 from sqlalchemy.sql.expression import Join
+from sqlalchemy.sql.selectable import CompoundSelect, Select
 
 if TYPE_CHECKING:
     from collections.abc import Callable, MutableMapping
@@ -287,6 +288,28 @@ class ExcelCompiler(compiler.SQLCompiler):
                 raise exc.CompileError(
                     "Excel dialect does not support correlated subqueries"
                 )
+
+    @staticmethod
+    def _guard_subquery_shape(inner: Select[Any] | CompoundSelect[Any]) -> None:
+        if isinstance(inner, CompoundSelect):
+            raise exc.CompileError(
+                "Excel dialect does not support compound subqueries in WHERE ... IN"
+            )
+
+        if len(inner.selected_columns) != 1:
+            raise exc.CompileError(
+                "Excel dialect only supports single-column subqueries in WHERE ... IN"
+            )
+
+        if inner._order_by_clauses:
+            raise exc.CompileError(
+                "Excel dialect does not support ORDER BY in subqueries"
+            )
+
+        if inner._limit_clause is not None or inner._offset_clause is not None:
+            raise exc.CompileError(
+                "Excel dialect does not support LIMIT/OFFSET in subqueries"
+            )
 
     def _is_unresolved_bindparam(self, bindparam: elements.BindParameter[Any]) -> bool:
         return bool(getattr(bindparam, "required", False)) and (
@@ -580,13 +603,18 @@ class ExcelCompiler(compiler.SQLCompiler):
 
         inner = getattr(subquery, "element", None)
         if inner is not None:
-            # Reject subqueries that themselves contain a JOIN
-            for from_clause in inner.get_final_froms():
-                if isinstance(from_clause, Join):
-                    raise exc.CompileError(
-                        "Excel dialect does not support JOIN inside subqueries"
-                    )
-            self._reject_correlated_subquery(inner)
+            if isinstance(inner, CompoundSelect):
+                self._guard_subquery_shape(inner)
+            elif getattr(inner, "__visit_name__", None) == "select":
+                select_inner = cast("Select[Any]", inner)
+                self._guard_subquery_shape(select_inner)
+                # Reject subqueries that themselves contain a JOIN
+                for from_clause in select_inner.get_final_froms():
+                    if isinstance(from_clause, Join):
+                        raise exc.CompileError(
+                            "Excel dialect does not support JOIN inside subqueries"
+                        )
+                self._reject_correlated_subquery(select_inner)
 
         self._subquery_depth += 1
         try:
@@ -598,7 +626,8 @@ class ExcelCompiler(compiler.SQLCompiler):
 
     def visit_grouping(self, grouping: Any, asfrom: bool = False, **kwargs: Any) -> str:
         element = getattr(grouping, "element", None)
-        is_subquery_select = getattr(element, "__visit_name__", None) == "select"
+        visit_name = getattr(element, "__visit_name__", None)
+        is_subquery_select = visit_name in {"select", "compound_select"}
         if is_subquery_select:
             if not self._in_in_clause:
                 raise exc.CompileError(
@@ -616,13 +645,18 @@ class ExcelCompiler(compiler.SQLCompiler):
                 )
 
             assert element is not None  # guaranteed by is_subquery_select check
-            # Reject subqueries that themselves contain a JOIN
-            for from_clause in element.get_final_froms():
-                if isinstance(from_clause, Join):
-                    raise exc.CompileError(
-                        "Excel dialect does not support JOIN inside subqueries"
-                    )
-            self._reject_correlated_subquery(element)
+            if visit_name == "compound_select":
+                self._guard_subquery_shape(cast("CompoundSelect[Any]", element))
+            elif visit_name == "select":
+                select_element = cast("Select[Any]", element)
+                self._guard_subquery_shape(select_element)
+                # Reject subqueries that themselves contain a JOIN
+                for from_clause in select_element.get_final_froms():
+                    if isinstance(from_clause, Join):
+                        raise exc.CompileError(
+                            "Excel dialect does not support JOIN inside subqueries"
+                        )
+                self._reject_correlated_subquery(select_element)
             kwargs["literal_binds"] = True
 
         if is_subquery_select:

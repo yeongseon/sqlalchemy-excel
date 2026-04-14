@@ -161,6 +161,32 @@ def test_reflection_validates_metadata_with_cursor_when_headers_unavailable(
     engine.dispose()
 
 
+def test_reflection_same_headers_cannot_detect_metadata_drift(tmp_path) -> None:
+    workbook_path = tmp_path / "reflection.xlsx"
+    engine = create_engine(f"excel:///{workbook_path}")
+
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)"))
+
+    workbook = load_workbook(workbook_path)
+    stale_sheet = workbook["users"]
+    workbook.remove(stale_sheet)
+    recreated = workbook.create_sheet("users")
+    recreated.cell(row=1, column=1, value="id")
+    recreated.cell(row=1, column=2, value="name")
+    workbook.save(workbook_path)
+
+    engine.dispose()
+    engine = create_engine(f"excel:///{workbook_path}")
+
+    inspector = inspect(engine)
+    columns = inspector.get_columns("users")
+    assert [column["name"] for column in columns] == ["id", "name"]
+    assert inspector.get_pk_constraint("users")["constrained_columns"] == ["id"]
+
+    engine.dispose()
+
+
 def test_table_scoped_reflection_methods_raise_for_missing_table(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     inspector = inspect(engine)

@@ -232,10 +232,9 @@ class ExcelInspectionMixin:
     ) -> bool:
         if header_names is None:
             return False
-        # Check that metadata column names match live headers
-        # AND metadata column count matches live column count.
-        # This guards against the edge case where a sheet is deleted and
-        # recreated with the same header names but different types/nullability/PKs.
+        # Header validation is intentionally strict on column order and count.
+        # Limitation: if a worksheet is recreated with the exact same headers,
+        # this check alone cannot detect drift in type/nullability/PK metadata.
         return [col["name"] for col in meta] == header_names and len(meta) == len(
             header_names
         )

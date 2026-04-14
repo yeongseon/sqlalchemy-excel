@@ -584,7 +584,7 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
 
             col_name = self._unquote_identifier(col_match.group(1))
             remainder = col_match.group(2)
-            remainder_upper = remainder.upper()
+            remainder_upper = _strip_quoted_literals(remainder).upper()
             extracted = self._extract_declared_type_name(remainder)
             if extracted is None:
                 continue
@@ -672,7 +672,7 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
             type_map[col_name] = added_type
             # Preserve nullable/PK hints from trailing constraints:
             # ALTER TABLE t ADD COLUMN c TYPE NOT NULL PRIMARY KEY
-            tail = remainder.upper()
+            tail = _strip_quoted_literals(remainder).upper()
             is_pk = "PRIMARY KEY" in tail or "PRIMARY_KEY" in tail
             nullable_map[col_name] = "NOT NULL" not in tail and not is_pk
             pk_map[col_name] = is_pk

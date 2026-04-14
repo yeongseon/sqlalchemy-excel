@@ -410,6 +410,60 @@ def test_compiler_allows_subquery_with_inline_literal_predicate(tmp_xlsx: str) -
     engine.dispose()
 
 
+def test_compiler_rejects_multi_column_in_subquery(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    sub = select(orders.c.user_id, orders.c.id)
+    stmt = select(users).where(users.c.id.in_(sub))
+    with pytest.raises(exc.CompileError, match="single-column subqueries"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_compound_in_subquery(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    sub = sa.union(select(orders.c.user_id), select(orders.c.id))
+    stmt = select(users).where(users.c.id.in_(sub))
+    with pytest.raises(exc.CompileError, match="compound subqueries"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_rejects_ordered_limited_in_subquery(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    sub = select(orders.c.user_id).order_by(orders.c.user_id).limit(1)
+    stmt = select(users).where(users.c.id.in_(sub))
+    with pytest.raises(exc.CompileError, match="ORDER BY"):
+        stmt.compile(dialect=engine.dialect)
+
+    engine.dispose()
+
+
+def test_compiler_allows_simple_single_column_subquery(tmp_xlsx: str) -> None:
+    engine = create_engine(f"excel:///{tmp_xlsx}")
+    metadata = MetaData()
+    users, orders = _build_tables(metadata)
+
+    sub = select(orders.c.user_id).where(orders.c.user_id > 0)
+    stmt = select(users).where(users.c.id.in_(sub))
+    compiled = stmt.compile(dialect=engine.dialect)
+    sql = str(compiled)
+    assert "IN" in sql
+    assert "SELECT" in sql
+
+    engine.dispose()
+
+
 def test_compiler_rejects_unresolved_bindparam_in_subquery(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
