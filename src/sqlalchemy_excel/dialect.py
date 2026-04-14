@@ -77,7 +77,12 @@ def _after_drop(
     excel_dbapi.remove_table_metadata(raw_conn, target.name)
 
 
-# Register DDL events globally for all Table objects
+# Register DDL events on the Table class.
+#
+# This is the standard pattern for third-party SQLAlchemy dialects that need
+# post-DDL hooks (cf. sqlalchemy-exasol, sqlalchemy-bigquery).  The listeners
+# guard on connection.dialect.name so they are a no-op for every non-Excel
+# engine in the process.  propagate=False prevents inheritance propagation.
 event.listen(Table, "after_create", _after_create, propagate=False)
 event.listen(Table, "after_drop", _after_drop, propagate=False)
 
