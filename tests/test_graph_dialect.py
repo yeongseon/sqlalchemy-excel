@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.dialects import registry
 from sqlalchemy.engine import make_url
 
-import sqlalchemy_excel  # noqa: F401
+import sqlalchemy_excel  # noqa: F401  # Needed for dialect registration side effect in source checkout tests.
 
 if TYPE_CHECKING:
     import httpx as httpx_types

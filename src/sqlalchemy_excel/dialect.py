@@ -177,6 +177,39 @@ def _driver_type_from_declared(type_expr: str) -> str:
     return "TEXT"
 
 
+def _parse_alter_add_column(statement: str) -> tuple[str, str, str] | None:
+    match = re.match(
+        r'^ALTER TABLE\s+("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s+ADD\s+COLUMN\s+("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s+(.+?)\s*;?$',
+        statement,
+        re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    return match.group(1), match.group(2), match.group(3)
+
+
+def _parse_alter_drop_column(statement: str) -> tuple[str, str] | None:
+    match = re.match(
+        r'^ALTER TABLE\s+("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s+DROP\s+COLUMN\s+("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s*;?$',
+        statement,
+        re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    return match.group(1), match.group(2)
+
+
+def _parse_alter_rename_column(statement: str) -> tuple[str, str, str] | None:
+    match = re.match(
+        r'^ALTER TABLE\s+("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s+RENAME\s+COLUMN\s+("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s+TO\s+("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s*;?$',
+        statement,
+        re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    return match.group(1), match.group(2), match.group(3)
+
+
 def _statement_for_driver_execution(statement: str) -> str:
     create_match = re.match(
         r'^CREATE TABLE\s+("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*;?$',
@@ -202,15 +235,11 @@ def _statement_for_driver_execution(statement: str) -> str:
         if simplified:
             return f"CREATE TABLE {table_name} ({', '.join(simplified)})"
 
-    if not statement.upper().startswith("ALTER TABLE "):
-        return statement
-
-    tokens = statement.split()
-    if len(tokens) < 7:
-        return statement
-
-    if tokens[3].upper() == "ADD" and tokens[4].upper() == "COLUMN":
-        return " ".join(tokens[:7])
+    add_match = _parse_alter_add_column(statement)
+    if add_match is not None:
+        table_name, column_name, remainder = add_match
+        normalized_type = _driver_type_from_declared(remainder)
+        return f"ALTER TABLE {table_name} ADD COLUMN {column_name} {normalized_type}"
 
     return statement
 
@@ -326,10 +355,11 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
     ) -> None:
         """Execute a statement, normalizing whitespace for excel-dbapi."""
         normalized = _normalize_statement_whitespace_quote_aware(statement)
+        pre_alter_meta = self._read_pre_alter_metadata(cursor, normalized)
         cursor.execute(_statement_for_driver_execution(normalized), parameters)
         self._sync_create_table_metadata(cursor, normalized)
         self._sync_drop_table_metadata(cursor, normalized)
-        self._sync_alter_table_metadata(cursor, normalized)
+        self._sync_alter_table_metadata(cursor, normalized, pre_alter_meta)
 
     def do_execute_no_params(
         self,
@@ -339,10 +369,36 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
     ) -> None:
         """Execute a statement with no parameters."""
         normalized = _normalize_statement_whitespace_quote_aware(statement)
+        pre_alter_meta = self._read_pre_alter_metadata(cursor, normalized)
         cursor.execute(_statement_for_driver_execution(normalized), None)
         self._sync_create_table_metadata(cursor, normalized)
         self._sync_drop_table_metadata(cursor, normalized)
-        self._sync_alter_table_metadata(cursor, normalized)
+        self._sync_alter_table_metadata(cursor, normalized, pre_alter_meta)
+
+    def _read_pre_alter_metadata(
+        self, cursor: Any, statement: str
+    ) -> list[dict[str, Any]] | None:
+        if (
+            _parse_alter_add_column(statement) is None
+            and _parse_alter_drop_column(statement) is None
+            and _parse_alter_rename_column(statement) is None
+        ):
+            return None
+
+        table_match = re.match(
+            r'^ALTER TABLE\s+("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\b',
+            statement,
+            re.IGNORECASE,
+        )
+        if table_match is None:
+            return None
+
+        import excel_dbapi
+
+        table_name = self._unquote_identifier(table_match.group(1))
+        raw_conn = cursor.connection
+        current = excel_dbapi.read_table_metadata(raw_conn, table_name) or []
+        return [dict(column) for column in current]
 
     @staticmethod
     def _unquote_identifier(identifier: str) -> str:
@@ -404,9 +460,24 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
         columns: list[dict[str, Any]] = []
         table_pk_columns: set[str] = set()
         for part in self._split_sql_list(column_block):
-            upper_part = part.upper()
+            stripped = part.strip()
+            upper_part = stripped.upper()
+
+            if upper_part.startswith("CONSTRAINT ") and " PRIMARY KEY" in upper_part:
+                pk_match = re.search(
+                    r"PRIMARY KEY\s*\((.+)\)\s*$",
+                    stripped,
+                    re.IGNORECASE,
+                )
+                if pk_match is not None:
+                    for name in self._split_sql_list(pk_match.group(1)):
+                        table_pk_columns.add(self._unquote_identifier(name.strip()))
+                continue
+
             if upper_part.startswith("PRIMARY KEY"):
-                pk_match = re.match(r"^PRIMARY KEY\s*\((.+)\)\s*$", part, re.IGNORECASE)
+                pk_match = re.match(
+                    r"^PRIMARY KEY\s*\((.+)\)\s*$", stripped, re.IGNORECASE
+                )
                 if pk_match is not None:
                     for name in self._split_sql_list(pk_match.group(1)):
                         table_pk_columns.add(self._unquote_identifier(name.strip()))
@@ -423,7 +494,7 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
 
             col_match = re.match(
                 r'^("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s+(.+)$',
-                part,
+                stripped,
             )
             if col_match is None:
                 continue
@@ -474,29 +545,45 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
         raw_conn = cursor.connection
         excel_dbapi.remove_table_metadata(raw_conn, table_name)
 
-    def _sync_alter_table_metadata(self, cursor: Any, statement: str) -> None:
+    def _sync_alter_table_metadata(
+        self,
+        cursor: Any,
+        statement: str,
+        pre_alter_meta: list[dict[str, Any]] | None = None,
+    ) -> None:
         if not statement.upper().startswith("ALTER TABLE "):
+            return
+
+        add_match = _parse_alter_add_column(statement)
+        drop_match = _parse_alter_drop_column(statement)
+        rename_match = _parse_alter_rename_column(statement)
+        if add_match is None and drop_match is None and rename_match is None:
             return
 
         import excel_dbapi
 
-        tokens = statement.split()
-        if len(tokens) < 6:
+        table_match = re.match(
+            r'^ALTER TABLE\s+("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\b',
+            statement,
+            re.IGNORECASE,
+        )
+        if table_match is None:
             return
 
-        table_name = tokens[2].strip('"')
-        operation = tokens[3].upper()
+        table_name = self._unquote_identifier(table_match.group(1))
 
         raw_conn = cursor.connection
-        current_meta = excel_dbapi.read_table_metadata(raw_conn, table_name) or []
+        current_meta = pre_alter_meta
+        if current_meta is None:
+            current_meta = excel_dbapi.read_table_metadata(raw_conn, table_name) or []
 
         type_map = {col["name"]: col["type_name"] for col in current_meta}
         nullable_map = {col["name"]: col.get("nullable", True) for col in current_meta}
         pk_map = {col["name"]: col.get("primary_key", False) for col in current_meta}
 
-        if operation == "ADD" and len(tokens) >= 7 and tokens[4].upper() == "COLUMN":
-            col_name = tokens[5].strip('"')
-            remainder = " ".join(tokens[6:])
+        if add_match is not None:
+            _table_name, raw_col_name, remainder = add_match
+            col_name = self._unquote_identifier(raw_col_name)
             extracted = self._extract_declared_type_name(remainder)
             added_type = self._normalize_metadata_type_name(extracted or "TEXT")
             type_map[col_name] = added_type
@@ -507,20 +594,17 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
             nullable_map[col_name] = "NOT NULL" not in tail and not is_pk
             pk_map[col_name] = is_pk
 
-        if operation == "DROP" and len(tokens) == 6 and tokens[4].upper() == "COLUMN":
-            removed = tokens[5].strip('"')
+        if drop_match is not None:
+            _table_name, raw_removed = drop_match
+            removed = self._unquote_identifier(raw_removed)
             type_map.pop(removed, None)
             nullable_map.pop(removed, None)
             pk_map.pop(removed, None)
 
-        if (
-            operation == "RENAME"
-            and len(tokens) == 8
-            and tokens[4].upper() == "COLUMN"
-            and tokens[6].upper() == "TO"
-        ):
-            old_name = tokens[5].strip('"')
-            new_name = tokens[7].strip('"')
+        if rename_match is not None:
+            _table_name, raw_old_name, raw_new_name = rename_match
+            old_name = self._unquote_identifier(raw_old_name)
+            new_name = self._unquote_identifier(raw_new_name)
             if old_name in type_map:
                 type_map[new_name] = type_map.pop(old_name)
             if old_name in nullable_map:

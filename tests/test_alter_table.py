@@ -127,3 +127,40 @@ def test_alter_table_rename_column(engine) -> None:
 
     columns = [col["name"] for col in inspect(engine).get_columns("users")]
     assert columns == ["id", "full_name", "age"]
+
+
+def test_alter_table_preserves_existing_pk_and_nullability(engine) -> None:
+    metadata = MetaData()
+    Table(
+        "users",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("age", Integer, nullable=False),
+        Column("name", String),
+    )
+    metadata.create_all(engine)
+
+    with engine.begin() as conn:
+        conn.execute(AddColumn("users", Column("email", String)))
+
+    inspector = inspect(engine)
+    columns_after_add = {col["name"]: col for col in inspector.get_columns("users")}
+    assert columns_after_add["age"]["nullable"] is False
+    assert inspector.get_pk_constraint("users")["constrained_columns"] == ["id"]
+
+    with engine.begin() as conn:
+        conn.execute(RenameColumn("users", "age", "years"))
+
+    inspector = inspect(engine)
+    columns_after_rename = {col["name"]: col for col in inspector.get_columns("users")}
+    assert columns_after_rename["years"]["nullable"] is False
+    assert inspector.get_pk_constraint("users")["constrained_columns"] == ["id"]
+
+    with engine.begin() as conn:
+        conn.execute(DropColumn("users", "name"))
+
+    inspector = inspect(engine)
+    final_columns = {col["name"]: col for col in inspector.get_columns("users")}
+    assert "name" not in final_columns
+    assert final_columns["years"]["nullable"] is False
+    assert inspector.get_pk_constraint("users")["constrained_columns"] == ["id"]

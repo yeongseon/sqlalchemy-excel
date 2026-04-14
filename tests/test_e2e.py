@@ -3465,6 +3465,23 @@ def test_e2e_raw_create_table_reflects_table_level_composite_primary_key(
     engine.dispose()
 
 
+def test_e2e_raw_create_table_reflects_named_composite_primary_key(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "CREATE TABLE memberships (a INTEGER, b INTEGER, CONSTRAINT pk_memberships PRIMARY KEY (a, b))"
+        )
+
+    inspector = inspect(engine)
+    assert inspector.get_pk_constraint("memberships")["constrained_columns"] == [
+        "a",
+        "b",
+    ]
+
+    engine.dispose()
+
+
 def test_e2e_raw_create_table_numeric_aliases_reflect_as_float(tmp_path) -> None:
     engine = _engine_for(tmp_path)
 
@@ -3526,6 +3543,64 @@ def test_e2e_alter_table_add_float_column_reflects_as_float(tmp_path) -> None:
     columns = inspect(engine).get_columns("users")
     score = next(col for col in columns if col["name"] == "score")
     assert isinstance(score["type"], sa.Float)
+
+    engine.dispose()
+
+
+def test_e2e_raw_alter_add_numeric_aliases_reflect_as_float(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql("CREATE TABLE metrics (id INTEGER PRIMARY KEY)")
+        conn.exec_driver_sql("ALTER TABLE metrics ADD COLUMN x DECIMAL")
+        conn.exec_driver_sql("ALTER TABLE metrics ADD COLUMN y NUMERIC")
+        conn.exec_driver_sql("ALTER TABLE metrics ADD COLUMN z DOUBLE")
+        conn.exec_driver_sql("ALTER TABLE metrics ADD COLUMN w DOUBLE PRECISION")
+
+    inspector = inspect(engine)
+    columns = {
+        column["name"]: column["type"] for column in inspector.get_columns("metrics")
+    }
+    assert isinstance(columns["x"], sa.Float)
+    assert isinstance(columns["y"], sa.Float)
+    assert isinstance(columns["z"], sa.Float)
+    assert isinstance(columns["w"], sa.Float)
+
+    engine.dispose()
+
+
+def test_e2e_raw_alter_preserves_existing_pk_and_nullability(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, age INTEGER NOT NULL, name TEXT)"
+        )
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN email TEXT")
+
+    inspector = inspect(engine)
+    columns_after_add = {col["name"]: col for col in inspector.get_columns("users")}
+    assert columns_after_add["age"]["nullable"] is False
+    assert inspector.get_pk_constraint("users")["constrained_columns"] == ["id"]
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql("ALTER TABLE users RENAME COLUMN age TO years")
+
+    inspector = inspect(engine)
+    columns_after_rename = {col["name"]: col for col in inspector.get_columns("users")}
+    assert columns_after_rename["years"]["nullable"] is False
+    assert inspector.get_pk_constraint("users")["constrained_columns"] == ["id"]
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql("ALTER TABLE users DROP COLUMN name")
+
+    inspector = inspect(engine)
+    final_columns = {col["name"]: col for col in inspector.get_columns("users")}
+    assert "name" not in final_columns
+    assert final_columns["years"]["nullable"] is False
+    assert inspector.get_pk_constraint("users")["constrained_columns"] == ["id"]
 
     engine.dispose()
 

@@ -30,6 +30,8 @@ engine = create_engine("excel:///data.xlsx", connect_args={"engine": "openpyxl"}
 
 **Important**: Absolute paths require **four slashes** total (`excel:////absolute/path.xlsx`).
 
+> **Source checkout note**: In development/source mode (without an installed entry point), import `sqlalchemy_excel` before `create_engine(...)` so SQLAlchemy registers `excel://` and `excel+graph://` dialects.
+
 ## Basic ORM Usage
 
 ### Define Models
