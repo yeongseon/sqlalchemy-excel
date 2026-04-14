@@ -6,6 +6,8 @@ tables (worksheets), columns, and primary keys from an Excel file.
 
 from __future__ import annotations
 
+import logging
+from contextlib import suppress
 from typing import Any, cast
 
 from sqlalchemy import types as sa_types
@@ -27,6 +29,8 @@ _TYPE_MAP: dict[str, type[sa_types.TypeEngine[Any]]] = {
     "DATETIME": sa_types.DateTime,
     "TIMESTAMP": sa_types.DateTime,
 }
+
+_LOG = logging.getLogger(__name__)
 
 
 def _sa_type_from_name(type_name: str) -> sa_types.TypeEngine[Any]:
@@ -50,6 +54,9 @@ class ExcelInspectionMixin:
     ) -> list[str]:
         """Return all worksheet names, excluding the metadata sheet."""
         import excel_dbapi
+
+        if schema is not None:
+            return []
 
         raw_conn = connection.connection.dbapi_connection
         return cast("list[str]", excel_dbapi.list_tables(raw_conn, include_meta=False))
@@ -76,6 +83,9 @@ class ExcelInspectionMixin:
         Falls back to type inference from data sampling.
         """
         import excel_dbapi
+
+        if schema is not None:
+            raise NoSuchTableError(table_name)
 
         raw_conn = self._raw_connection(connection)
         table_exists = cast("bool", excel_dbapi.has_table(raw_conn, table_name))
@@ -123,6 +133,9 @@ class ExcelInspectionMixin:
         """Return primary key constraint info from the metadata sheet."""
         import excel_dbapi
 
+        if schema is not None:
+            raise NoSuchTableError(table_name)
+
         raw_conn = self._raw_connection(connection)
         table_exists = cast("bool", excel_dbapi.has_table(raw_conn, table_name))
         if not table_exists:
@@ -147,6 +160,8 @@ class ExcelInspectionMixin:
         **kw: Any,
     ) -> list[dict[str, Any]]:
         """Excel does not support foreign keys."""
+        if schema is not None:
+            raise NoSuchTableError(table_name)
         self._assert_table_exists(connection, table_name)
         return []
 
@@ -158,6 +173,8 @@ class ExcelInspectionMixin:
         **kw: Any,
     ) -> list[dict[str, Any]]:
         """Excel does not support indexes."""
+        if schema is not None:
+            raise NoSuchTableError(table_name)
         self._assert_table_exists(connection, table_name)
         return []
 
@@ -169,6 +186,8 @@ class ExcelInspectionMixin:
         **kw: Any,
     ) -> list[dict[str, Any]]:
         """Excel does not support unique constraints."""
+        if schema is not None:
+            raise NoSuchTableError(table_name)
         self._assert_table_exists(connection, table_name)
         return []
 
@@ -180,6 +199,8 @@ class ExcelInspectionMixin:
         **kw: Any,
     ) -> list[dict[str, Any]]:
         """Excel does not support check constraints."""
+        if schema is not None:
+            raise NoSuchTableError(table_name)
         self._assert_table_exists(connection, table_name)
         return []
 
@@ -191,6 +212,8 @@ class ExcelInspectionMixin:
         **kw: Any,
     ) -> dict[str, Any]:
         """Excel does not support table comments."""
+        if schema is not None:
+            raise NoSuchTableError(table_name)
         self._assert_table_exists(connection, table_name)
         return {"text": None}
 
@@ -208,8 +231,32 @@ class ExcelInspectionMixin:
         header_names: list[str] | None,
     ) -> bool:
         if header_names is None:
-            return True
+            return False
         return [col["name"] for col in meta] == header_names
+
+    @staticmethod
+    def _cursor_header_names(raw_conn: Any, table_name: str) -> list[str] | None:
+        try:
+            cursor = raw_conn.cursor()
+        except Exception:
+            return None
+
+        try:
+            cursor.execute(f"SELECT * FROM {table_name} LIMIT 0")
+            description = getattr(cursor, "description", None)
+            if not description:
+                return None
+            header_names = [
+                str(column[0])
+                for column in description
+                if column is not None and column[0] is not None
+            ]
+            return header_names or None
+        except Exception:
+            return None
+        finally:
+            with suppress(Exception):
+                cursor.close()
 
     def _validated_metadata(
         self,
@@ -222,6 +269,15 @@ class ExcelInspectionMixin:
         meta = excel_dbapi.read_table_metadata(raw_conn, table_name)
         if meta is None:
             return None
+
+        if header_names is None:
+            header_names = self._cursor_header_names(raw_conn, table_name)
+            if header_names is None:
+                _LOG.warning(
+                    "Could not validate metadata headers for table '%s'; using stored metadata",
+                    table_name,
+                )
+                return meta
 
         if not self._metadata_header_matches(meta, header_names):
             excel_dbapi.remove_table_metadata(raw_conn, table_name)

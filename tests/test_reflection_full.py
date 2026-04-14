@@ -107,6 +107,60 @@ def test_reflection_rebuilds_columns_when_metadata_headers_are_stale(tmp_path) -
     engine.dispose()
 
 
+def test_reflection_validates_metadata_with_cursor_when_headers_unavailable(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine = _engine_for(tmp_path)
+
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE users (id INTEGER, name TEXT)"))
+
+    with engine.connect() as conn:
+        import excel_dbapi
+
+        raw_conn = conn.connection.dbapi_connection
+        excel_dbapi.write_table_metadata(
+            raw_conn,
+            "users",
+            [
+                {
+                    "name": "old_id",
+                    "type_name": "INTEGER",
+                    "nullable": True,
+                    "primary_key": False,
+                },
+                {
+                    "name": "old_name",
+                    "type_name": "TEXT",
+                    "nullable": True,
+                    "primary_key": False,
+                },
+            ],
+        )
+
+    from sqlalchemy_excel.reflection import ExcelInspectionMixin
+
+    monkeypatch.setattr(
+        ExcelInspectionMixin,
+        "_worksheet_header_names",
+        staticmethod(lambda _raw_conn, _table_name: None),
+    )
+
+    inspector = inspect(engine)
+    columns = inspector.get_columns("users")
+    assert [column["name"] for column in columns] == ["id", "name"]
+
+    with engine.connect() as conn:
+        import excel_dbapi
+
+        raw_conn = conn.connection.dbapi_connection
+        metadata = excel_dbapi.read_table_metadata(raw_conn, "users")
+        assert metadata is not None
+        assert [column["name"] for column in metadata] == ["id", "name"]
+
+    engine.dispose()
+
+
 def test_table_scoped_reflection_methods_raise_for_missing_table(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     inspector = inspect(engine)
@@ -121,5 +175,22 @@ def test_table_scoped_reflection_methods_raise_for_missing_table(tmp_path) -> No
         inspector.get_check_constraints("missing")
     with pytest.raises(exc.NoSuchTableError):
         inspector.get_table_comment("missing")
+
+    engine.dispose()
+
+
+def test_table_scoped_reflection_methods_raise_for_non_default_schema(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE users (id INTEGER, name TEXT)"))
+
+    inspector = inspect(engine)
+    with pytest.raises(exc.NoSuchTableError):
+        inspector.get_columns("users", schema="nonexistent")
+    with pytest.raises(exc.NoSuchTableError):
+        inspector.get_pk_constraint("users", schema="nonexistent")
+    with pytest.raises(exc.NoSuchTableError):
+        inspector.get_foreign_keys("users", schema="nonexistent")
 
     engine.dispose()

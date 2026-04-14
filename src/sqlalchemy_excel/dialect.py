@@ -709,6 +709,9 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
         """Check if a worksheet (table) exists."""
         import excel_dbapi
 
+        if schema is not None:
+            return False
+
         raw_conn = connection.connection.dbapi_connection
         return cast("bool", excel_dbapi.has_table(raw_conn, table_name))
 

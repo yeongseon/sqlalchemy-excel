@@ -120,7 +120,7 @@ sqlalchemy-excel/
 │   ├── types.py              # ExcelTypeCompiler (type mappings)
 │   ├── reflection.py         # ExcelInspectionMixin (schema inspection)
 │   └── py.typed              # PEP 561 marker file
-├── tests/                    # 18 test modules (400 passed, 2 xfailed)
+├── tests/                    # 18 test modules (402 passed, 2 xfailed)
 │   ├── conftest.py           # Shared fixtures
 │   ├── test_alter_table.py
 │   ├── test_dialect.py

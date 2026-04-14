@@ -979,6 +979,30 @@ class ExcelCompiler(compiler.SQLCompiler):
 
         return target_text
 
+    @staticmethod
+    def _rewrite_upsert_same_table_column(value: Any, insert_statement: Any) -> Any:
+        if not isinstance(value, elements.ColumnElement):
+            return value
+
+        value_table = getattr(value, "table", None)
+        insert_table = getattr(insert_statement, "table", None)
+        if (
+            value_table is None
+            or insert_table is None
+            or value_table is not insert_table
+        ):
+            return value
+
+        excluded_columns = getattr(insert_statement, "excluded", None)
+        value_key = getattr(value, "key", None)
+        if excluded_columns is None or value_key is None:
+            return value
+
+        if value_key in excluded_columns:
+            return excluded_columns[value_key]
+
+        return value
+
     def visit_on_conflict_do_nothing(self, on_conflict: Any, **kw: Any) -> str:
         target_text = self._on_conflict_target(on_conflict, **kw)
 
@@ -1009,6 +1033,8 @@ class ExcelCompiler(compiler.SQLCompiler):
                 value = set_parameters.pop(c)
             else:
                 continue
+
+            value = self._rewrite_upsert_same_table_column(value, insert_statement)
 
             if coercions._is_literal(value):
                 value = elements.BindParameter(None, value, type_=c.type)

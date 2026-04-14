@@ -58,6 +58,10 @@ class TestGetTableNames:
         tables = insp.get_table_names()
         assert "__excel_meta__" not in tables
 
+    def test_nonexistent_schema_returns_no_tables(self, populated_engine):
+        insp = inspect(populated_engine)
+        assert insp.get_table_names(schema="nonexistent") == []
+
 
 class TestHasTable:
     """Test has_table."""
@@ -69,6 +73,10 @@ class TestHasTable:
     def test_nonexistent_table(self, populated_engine):
         insp = inspect(populated_engine)
         assert not insp.has_table("nonexistent")
+
+    def test_schema_argument_returns_false(self, populated_engine):
+        insp = inspect(populated_engine)
+        assert not insp.has_table("users", schema="nonexistent")
 
 
 class TestGetColumns:

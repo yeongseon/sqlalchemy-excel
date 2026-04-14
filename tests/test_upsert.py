@@ -160,15 +160,34 @@ class TestUpsertDoUpdate:
             assert rows == [(1, "Alice", 31, "A")]
 
     def test_set_with_table_columns(self, populated_engine, items_table):
-        upsert_stmt = insert(items_table).on_conflict_do_update(
-            index_elements=["id"],
-            set_=items_table.c,
+        with populated_engine.begin() as conn:
+            conn.execute(
+                insert(items_table).values(id=1, name="Alice", age=30, code="A")
+            )
+
+        upsert_stmt = (
+            insert(items_table)
+            .values(id=1, name="Renamed", age=41, code="B")
+            .on_conflict_do_update(
+                index_elements=["id"],
+                set_=items_table.c,
+            )
         )
         compiled = " ".join(
             str(upsert_stmt.compile(dialect=populated_engine.dialect)).split()
         )
         assert "items." not in compiled
-        assert " SET id = id, name = name, age = age, code = code" in compiled
+        assert (
+            " SET id = excluded.id, name = excluded.name, age = excluded.age,"
+            " code = excluded.code"
+        ) in compiled
+
+        with populated_engine.begin() as conn:
+            conn.execute(upsert_stmt)
+
+        with populated_engine.connect() as conn:
+            rows = conn.execute(select(items_table).order_by(items_table.c.id)).all()
+            assert rows == [(1, "Renamed", 41, "B")]
 
     def test_multi_column_conflict_target(
         self, populated_engine, composite_items_table
