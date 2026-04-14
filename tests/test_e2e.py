@@ -3444,6 +3444,23 @@ def test_e2e_raw_create_table_reflects_declared_schema(tmp_path) -> None:
     engine.dispose()
 
 
+def test_e2e_raw_sql_schema_qualified_names_bypass_compile_guard(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql("CREATE TABLE s.users (id INTEGER, name TEXT)")
+        conn.exec_driver_sql("INSERT INTO s.users (id, name) VALUES (1, 'Alice')")
+
+    with engine.connect() as conn:
+        rows = conn.exec_driver_sql("SELECT id, name FROM s.users").all()
+        assert rows == [(1, "Alice")]
+
+    inspector = inspect(engine)
+    assert inspector.get_columns("s.users")[0]["name"] == "id"
+
+    engine.dispose()
+
+
 def test_e2e_raw_create_table_reflects_table_level_composite_primary_key(
     tmp_path,
 ) -> None:

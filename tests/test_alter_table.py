@@ -96,7 +96,7 @@ def test_alter_table_add_not_null_column_to_non_empty_table_raises(engine) -> No
     with engine.begin() as conn:
         conn.execute(insert(users).values(id=1, name="Alice", age=30))
 
-    with engine.begin() as conn, pytest.raises(exc.CompileError, match="non-empty"):
+    with engine.begin() as conn, pytest.raises(exc.OperationalError, match="non-empty"):
         conn.execute(AddColumn("users", Column("email", String, nullable=False)))
 
     columns = [col["name"] for col in inspect(engine).get_columns("users")]
@@ -111,7 +111,7 @@ def test_alter_table_add_primary_key_column_to_non_empty_table_raises(engine) ->
     with engine.begin() as conn:
         conn.execute(insert(users).values(id=1, name="Alice", age=30))
 
-    with engine.begin() as conn, pytest.raises(exc.CompileError, match="non-empty"):
+    with engine.begin() as conn, pytest.raises(exc.OperationalError, match="non-empty"):
         conn.execute(
             AddColumn("users", Column("external_id", Integer, primary_key=True))
         )

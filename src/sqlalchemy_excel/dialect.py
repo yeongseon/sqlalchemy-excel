@@ -10,7 +10,7 @@ from urllib.parse import unquote as _url_unquote
 
 from sqlalchemy import event, pool
 from sqlalchemy.engine import default
-from sqlalchemy.exc import CompileError
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.schema import Table
 
 from .compiler import ExcelCompiler, ExcelIdentifierPreparer
@@ -429,9 +429,13 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
 
         if self._table_has_existing_rows(cursor, raw_table_name):
             table_name = self._unquote_identifier(raw_table_name)
-            raise CompileError(
-                "Excel dialect cannot add NOT NULL or PRIMARY KEY columns to "
-                f"non-empty table '{table_name}'"
+            raise OperationalError(
+                statement,
+                None,
+                RuntimeError(
+                    "Excel dialect cannot add NOT NULL or PRIMARY KEY columns to "
+                    f"non-empty table '{table_name}'"
+                ),
             )
 
     @staticmethod

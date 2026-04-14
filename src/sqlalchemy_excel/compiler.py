@@ -94,6 +94,13 @@ class ExcelCompiler(compiler.SQLCompiler):
 
     @staticmethod
     def _raise_if_schema_qualified(table: Any) -> None:
+        """Reject schema-qualified SQLAlchemy table objects.
+
+        This guard runs only for SQL emitted from SQLAlchemy expression
+        compilation. Raw SQL strings executed through ``exec_driver_sql()`` are
+        passed directly to excel-dbapi and intentionally bypass SQLAlchemy
+        compile-time schema validation.
+        """
         if getattr(table, "schema", None) is not None:
             raise exc.CompileError("Excel dialect does not support schemas")
 

@@ -191,6 +191,7 @@ class ExcelInspectionMixin:
         **kw: Any,
     ) -> dict[str, Any]:
         """Excel does not support table comments."""
+        self._assert_table_exists(connection, table_name)
         return {"text": None}
 
     def get_schema_names(self, connection: Any, **kw: Any) -> list[str]:
@@ -238,11 +239,20 @@ class ExcelInspectionMixin:
 
     @staticmethod
     def _worksheet_header_names(raw_conn: Any, table_name: str) -> list[str] | None:
-        workbook = getattr(raw_conn, "workbook", None)
+        from excel_dbapi.exceptions import NotSupportedError
+
+        try:
+            workbook = getattr(raw_conn, "workbook", None)
+        except NotSupportedError:
+            return None
         if workbook is None:
             return None
 
-        worksheet = workbook[table_name]
+        try:
+            worksheet = workbook[table_name]
+        except (KeyError, NotSupportedError):
+            return None
+
         headers: list[str] = []
         for index in range(1, worksheet.max_column + 1):
             value = worksheet.cell(row=1, column=index).value

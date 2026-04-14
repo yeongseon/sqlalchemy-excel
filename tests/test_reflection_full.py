@@ -119,5 +119,7 @@ def test_table_scoped_reflection_methods_raise_for_missing_table(tmp_path) -> No
         inspector.get_unique_constraints("missing")
     with pytest.raises(exc.NoSuchTableError):
         inspector.get_check_constraints("missing")
+    with pytest.raises(exc.NoSuchTableError):
+        inspector.get_table_comment("missing")
 
     engine.dispose()

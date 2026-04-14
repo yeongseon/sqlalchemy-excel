@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.dialects import registry
 from sqlalchemy.engine import make_url
 
@@ -175,6 +175,21 @@ class TestGraphDialectIntegration:
             rows = result.fetchall()
             assert len(rows) == 1
             assert rows[0] == ("Alice",)
+        engine.dispose()
+
+    def test_reflection_get_columns_does_not_crash(self):
+        transport = httpx.MockTransport(_graph_handler)
+        engine = create_engine(
+            "excel+graph:///drv-test/itm-test",
+            connect_args={
+                "credential": "test-token",
+                "transport": transport,
+            },
+        )
+        with engine.connect() as conn:
+            columns = inspect(conn).get_columns("Sheet1")
+
+        assert [column["name"] for column in columns] == ["id", "name", "value"]
         engine.dispose()
 
 
