@@ -7,9 +7,11 @@ ALTER TABLE  → supports ADD/DROP/RENAME COLUMN.
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 from sqlalchemy import exc
+from sqlalchemy.schema import CheckConstraint, UniqueConstraint
 from sqlalchemy.sql import compiler
 
 
@@ -45,10 +47,35 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
         table_name = self.preparer.format_table(table)
 
         columns = []
+        pk_columns = {col.name for col in table.primary_key.columns}
+        inline_pk = len(pk_columns) == 1
         for col in table.columns:
             col_name = self.preparer.format_column(col)
             col_type = self.dialect.type_compiler.process(col.type)
-            columns.append(f"{col_name} {col_type}")
+            constraints: list[str] = []
+            if col.nullable is False:
+                constraints.append("NOT NULL")
+            if inline_pk and col.name in pk_columns:
+                constraints.append("PRIMARY KEY")
+            if col.unique is True:
+                warnings.warn(
+                    "Excel dialect does not enforce UNIQUE constraints",
+                    stacklevel=3,
+                )
+            suffix = f" {' '.join(constraints)}" if constraints else ""
+            columns.append(f"{col_name} {col_type}{suffix}")
+
+        for constraint in table.constraints:
+            if isinstance(constraint, UniqueConstraint):
+                warnings.warn(
+                    "Excel dialect does not enforce UNIQUE constraints",
+                    stacklevel=3,
+                )
+            if isinstance(constraint, CheckConstraint):
+                warnings.warn(
+                    "Excel dialect does not enforce CHECK constraints",
+                    stacklevel=3,
+                )
 
         return f"CREATE TABLE {table_name} ({', '.join(columns)})"
 

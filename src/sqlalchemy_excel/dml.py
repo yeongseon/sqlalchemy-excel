@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, Union, cast
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import util
 from sqlalchemy.sql import coercions, roles, schema
-from sqlalchemy.sql._typing import _DMLTableArgument
 from sqlalchemy.sql.base import (
     ColumnCollection,
     ReadOnlyColumnCollection,
@@ -21,15 +20,18 @@ from sqlalchemy.sql.elements import (
     TextClause,
 )
 from sqlalchemy.sql.expression import alias
-from sqlalchemy.util.typing import Self
+
+if TYPE_CHECKING:
+    from sqlalchemy.sql._typing import _DMLTableArgument
+    from sqlalchemy.util.typing import Self
 
 __all__ = ("Insert", "insert")
 
-_OnConflictIndexElementsT = Optional[list[Union[str, schema.Column[Any]]]]
-_OnConflictIndexWhereT = Optional[Union[ColumnElement[Any], TextClause]]
-_OnConflictSetDictT = dict[Union[schema.Column[Any], str], Any]
-_OnConflictSetT = Optional[Union[_OnConflictSetDictT, ColumnCollection[Any, Any]]]
-_OnConflictWhereT = Optional[Union[ColumnElement[Any], TextClause]]
+_OnConflictIndexElementsT = list[str | schema.Column[Any]] | None
+_OnConflictIndexWhereT = ColumnElement[Any] | TextClause | None
+_OnConflictSetDictT = dict[schema.Column[Any] | str, Any]
+_OnConflictSetT = _OnConflictSetDictT | ColumnCollection[Any, Any] | None
+_OnConflictWhereT = ColumnElement[Any] | TextClause | None
 
 
 def insert(table: _DMLTableArgument) -> Insert:
@@ -74,7 +76,9 @@ class Insert(StandardInsert):
                 "Excel dialect requires index_elements for ON CONFLICT clause"
             )
         if index_where is not None:
-            raise ValueError("Excel dialect does not support index_where in ON CONFLICT")
+            raise ValueError(
+                "Excel dialect does not support index_where in ON CONFLICT"
+            )
         if where is not None:
             raise ValueError(
                 "Excel dialect does not support WHERE clause in ON CONFLICT DO UPDATE"
@@ -97,7 +101,9 @@ class Insert(StandardInsert):
                 "Excel dialect requires index_elements for ON CONFLICT clause"
             )
         if index_where is not None:
-            raise ValueError("Excel dialect does not support index_where in ON CONFLICT")
+            raise ValueError(
+                "Excel dialect does not support index_where in ON CONFLICT"
+            )
         self._post_values_clause = OnConflictDoNothing(index_elements, index_where)
         return self
 
@@ -105,8 +111,8 @@ class Insert(StandardInsert):
 class OnConflictClause(ClauseElement):
     stringify_dialect = "excel"
 
-    inferred_target_elements: Optional[list[Union[str, schema.Column[Any]]]]
-    inferred_target_whereclause: Optional[Union[ColumnElement[Any], TextClause]]
+    inferred_target_elements: list[str | schema.Column[Any]] | None
+    inferred_target_whereclause: ColumnElement[Any] | TextClause | None
 
     def __init__(
         self,
@@ -134,8 +140,8 @@ class OnConflictDoNothing(OnConflictClause):
 class OnConflictDoUpdate(OnConflictClause):
     __visit_name__ = "on_conflict_do_update"
 
-    update_values_to_set: list[tuple[Union[schema.Column[Any], str], Any]]
-    update_whereclause: Optional[ColumnElement[Any]]
+    update_values_to_set: list[tuple[schema.Column[Any] | str, Any]]
+    update_whereclause: ColumnElement[Any] | None
 
     def __init__(
         self,

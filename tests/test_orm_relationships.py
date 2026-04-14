@@ -10,12 +10,11 @@ Known limitations:
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
 import pytest
-from sqlalchemy import ForeignKey, Integer, String, Table, Column, create_engine, select
+from sqlalchemy import Column, ForeignKey, Integer, String, Table, create_engine, select
 from sqlalchemy import exc as sa_exc
-from sqlalchemy.engine import Engine
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -24,6 +23,11 @@ from sqlalchemy.orm import (
     mapped_column,
     relationship,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from sqlalchemy.engine import Engine
 
 
 class Base(DeclarativeBase):
@@ -43,7 +47,7 @@ class Parent(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String)
-    children: Mapped[list["Child"]] = relationship(back_populates="parent")
+    children: Mapped[list[Child]] = relationship(back_populates="parent")
 
 
 class Child(Base):
@@ -60,7 +64,7 @@ class Author(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String)
-    books: Mapped[list["Book"]] = relationship(
+    books: Mapped[list[Book]] = relationship(
         secondary=author_book,
         back_populates="authors",
     )
@@ -114,7 +118,9 @@ def test_one_to_many_relationship_round_trip(relationship_engine: Engine) -> Non
 )
 def test_one_to_many_lazy_loading_boundary(relationship_engine: Engine) -> None:
     with Session(relationship_engine) as session:
-        session.add(Parent(id=2, name="parent-2", children=[Child(id=12, name="child-3")]))
+        session.add(
+            Parent(id=2, name="parent-2", children=[Child(id=12, name="child-3")])
+        )
         session.commit()
 
     with Session(relationship_engine) as session:
@@ -138,7 +144,9 @@ def test_many_to_many_association_table_persists(relationship_engine: Engine) ->
     raises=(sa_exc.CompileError, sa_exc.DBAPIError),
     reason="Many-to-many relationship loaders emit SQL not fully supported by excel-dbapi.",
 )
-def test_many_to_many_relationship_loading_boundary(relationship_engine: Engine) -> None:
+def test_many_to_many_relationship_loading_boundary(
+    relationship_engine: Engine,
+) -> None:
     with Session(relationship_engine) as session:
         author = Author(id=2, name="Grace")
         author.books.append(Book(id=2, title="Parser"))

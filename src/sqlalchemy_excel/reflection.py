@@ -70,9 +70,17 @@ class ExcelInspectionMixin:
         import excel_dbapi
 
         raw_conn = connection.connection.dbapi_connection
+        table_exists = cast("bool", excel_dbapi.has_table(raw_conn, table_name))
 
         # Try metadata sheet first
         meta = excel_dbapi.read_table_metadata(raw_conn, table_name)
+        if meta is not None and not table_exists:
+            excel_dbapi.remove_table_metadata(raw_conn, table_name)
+            meta = None
+
+        if not table_exists:
+            return []
+
         if meta is not None:
             return [
                 {
@@ -111,7 +119,15 @@ class ExcelInspectionMixin:
         import excel_dbapi
 
         raw_conn = connection.connection.dbapi_connection
+        table_exists = cast("bool", excel_dbapi.has_table(raw_conn, table_name))
         meta = excel_dbapi.read_table_metadata(raw_conn, table_name)
+        if meta is not None and not table_exists:
+            excel_dbapi.remove_table_metadata(raw_conn, table_name)
+            meta = None
+
+        if not table_exists:
+            return {"constrained_columns": [], "name": None}
+
         if meta is not None:
             pk_cols = [col["name"] for col in meta if col.get("primary_key", False)]
             if pk_cols:

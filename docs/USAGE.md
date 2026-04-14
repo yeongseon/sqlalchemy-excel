@@ -298,6 +298,11 @@ with Session(engine) as session:
 
 SQLAlchemy's inspector API works with Excel files:
 
+- Reflection only trusts metadata if the worksheet still exists.
+- Stale metadata for deleted worksheets is automatically cleaned up.
+- Raw DDL via `text()` / `exec_driver_sql()` keeps metadata synchronized for
+  `CREATE TABLE`, `ALTER TABLE`, and `DROP TABLE`.
+
 ```python
 from sqlalchemy import create_engine, inspect
 
@@ -344,9 +349,11 @@ sqlalchemy-excel has some limitations due to the nature of Excel as a database:
 - **No CTEs**: CTE queries are not supported.
 - **No window functions**: `OVER` clause raises `CompileError`.
 - **ALTER TABLE**: Supports `ADD COLUMN`, `DROP COLUMN`, and `RENAME COLUMN` via raw SQL through the driver.
+- **Raw CREATE/DROP reflection**: Raw `CREATE TABLE` writes declared schema metadata and raw `DROP TABLE` removes it.
 - **ORM relationship limits**: Lazy one-to-many relationship loading can return empty collections; use eager loading (`joinedload`) for reliable one-to-many reads.
 - **Many-to-many loading is unsupported**: Association table persistence works, but relationship loader SQL for many-to-many is not fully supported.
 - **No foreign keys or indexes**: Excel has no concept of these.
+- **UNIQUE/CHECK are not enforced**: They are accepted for SQLAlchemy compatibility, ignored by the backend, and compile-time warnings are emitted.
 - **Identifier restrictions**: Table and column names must match `[A-Za-z_][A-Za-z0-9_]*`.
 - **No concurrent writes**: Use a single-writer model.
 - **Rollback**: Partial support — works with the openpyxl backend when `autocommit=False` (snapshot/restore semantics). The Graph API backend treats rollback as a no-op.

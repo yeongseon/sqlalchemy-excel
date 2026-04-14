@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 import warnings
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import unquote as _url_unquote
 
@@ -253,6 +255,8 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
         """Execute a statement, normalizing whitespace for excel-dbapi."""
         normalized = _normalize_statement_whitespace_quote_aware(statement)
         cursor.execute(_statement_for_driver_execution(normalized), parameters)
+        self._sync_create_table_metadata(cursor, normalized)
+        self._sync_drop_table_metadata(cursor, normalized)
         self._sync_alter_table_metadata(cursor, normalized)
 
     def do_execute_no_params(
@@ -264,7 +268,130 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
         """Execute a statement with no parameters."""
         normalized = _normalize_statement_whitespace_quote_aware(statement)
         cursor.execute(_statement_for_driver_execution(normalized), None)
+        self._sync_create_table_metadata(cursor, normalized)
+        self._sync_drop_table_metadata(cursor, normalized)
         self._sync_alter_table_metadata(cursor, normalized)
+
+    @staticmethod
+    def _unquote_identifier(identifier: str) -> str:
+        if len(identifier) >= 2 and identifier[0] == identifier[-1] == '"':
+            return identifier[1:-1]
+        return identifier
+
+    @staticmethod
+    def _split_sql_list(sql: str) -> list[str]:
+        items: list[str] = []
+        start = 0
+        depth = 0
+        in_quote = False
+        i = 0
+        while i < len(sql):
+            ch = sql[i]
+            if in_quote:
+                if ch == '"':
+                    if i + 1 < len(sql) and sql[i + 1] == '"':
+                        i += 2
+                        continue
+                    in_quote = False
+                i += 1
+                continue
+
+            if ch == '"':
+                in_quote = True
+            elif ch == "(":
+                depth += 1
+            elif ch == ")" and depth > 0:
+                depth -= 1
+            elif ch == "," and depth == 0:
+                items.append(sql[start:i].strip())
+                start = i + 1
+            i += 1
+
+        tail = sql[start:].strip()
+        if tail:
+            items.append(tail)
+        return items
+
+    def _sync_create_table_metadata(self, cursor: Any, statement: str) -> None:
+        match = re.match(
+            r'^CREATE TABLE\s+("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*;?$',
+            statement,
+            re.IGNORECASE,
+        )
+        if match is None:
+            return
+
+        import excel_dbapi
+
+        table_name = self._unquote_identifier(match.group(1))
+        column_block = match.group(2).strip()
+        if not column_block:
+            return
+
+        columns: list[dict[str, Any]] = []
+        for part in self._split_sql_list(column_block):
+            upper_part = part.upper()
+            if upper_part.startswith(
+                (
+                    "PRIMARY KEY",
+                    "UNIQUE",
+                    "CHECK",
+                    "CONSTRAINT",
+                    "FOREIGN KEY",
+                )
+            ):
+                continue
+
+            col_match = re.match(
+                r'^("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s+(.+)$',
+                part,
+            )
+            if col_match is None:
+                continue
+
+            col_name = self._unquote_identifier(col_match.group(1))
+            remainder = col_match.group(2)
+            remainder_upper = remainder.upper()
+            type_match = re.match(
+                r"^([^\s]+(?:\([^)]*\))?)",
+                remainder,
+            )
+            if type_match is None:
+                continue
+
+            type_name = type_match.group(1).upper()
+            if type_name == "FLOAT":
+                type_name = "REAL"
+
+            columns.append(
+                {
+                    "name": col_name,
+                    "type_name": type_name,
+                    "nullable": "NOT NULL" not in remainder_upper,
+                    "primary_key": "PRIMARY KEY" in remainder_upper,
+                }
+            )
+
+        if not columns:
+            return
+
+        raw_conn = cursor.connection
+        excel_dbapi.write_table_metadata(raw_conn, table_name, columns)
+
+    def _sync_drop_table_metadata(self, cursor: Any, statement: str) -> None:
+        match = re.match(
+            r'^DROP TABLE(?:\s+IF EXISTS)?\s+("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s*;?$',
+            statement,
+            re.IGNORECASE,
+        )
+        if match is None:
+            return
+
+        import excel_dbapi
+
+        table_name = self._unquote_identifier(match.group(1))
+        raw_conn = cursor.connection
+        excel_dbapi.remove_table_metadata(raw_conn, table_name)
 
     def _sync_alter_table_metadata(self, cursor: Any, statement: str) -> None:
         if not statement.upper().startswith("ALTER TABLE "):
@@ -381,10 +508,8 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
         """
         from excel_dbapi.exceptions import NotSupportedError
 
-        try:
+        with suppress(NotSupportedError):
             dbapi_connection.rollback()
-        except NotSupportedError:
-            pass
 
     def do_close(self, dbapi_connection: Any) -> None:
         """Close the underlying excel-dbapi connection."""

@@ -16,6 +16,6 @@ __all__ = [
     "ExcelDialect",
     "ExcelGraphDialect",
     "Insert",
-    "insert",
     "__version__",
+    "insert",
 ]

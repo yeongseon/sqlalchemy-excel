@@ -104,7 +104,8 @@ Configuration (`pyproject.toml`):
 - `warn_return_any = true`
 - `warn_unused_configs = true`
 
-All code must pass strict type checking before merging.
+All source code under `src/sqlalchemy_excel/` must pass strict type checking before merging.
+(`make typecheck` runs mypy strict on `src/`; tests are validated by pytest and lint checks.)
 
 ## Project Structure
 

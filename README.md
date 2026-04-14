@@ -42,7 +42,9 @@ Before writing any code, understand the dialect's capabilities and limits:
 | UNION / UNION ALL / INTERSECT / EXCEPT | ✅ |
 | **Window functions (OVER)** | ❌ |
 | **ALTER TABLE** | ✅ (ADD/DROP/RENAME COLUMN) |
+| Raw DDL metadata sync (`text()` / `exec_driver_sql()`) | ✅ (`CREATE TABLE` / `ALTER TABLE` / `DROP TABLE`) |
 | **Foreign keys / indexes** | ❌ |
+| **UNIQUE / CHECK enforcement** | ❌ (accepted for compatibility; warnings are emitted) |
 | **Concurrent writes** | ❌ |
 | **Session.rollback()** | Partial (openpyxl with autocommit=False; graph: no-op) |
 
@@ -244,6 +246,14 @@ with engine.connect() as conn:
 ```
 
 ## Schema Inspection
+
+Reflection verifies that worksheets still exist before trusting metadata.
+If metadata remains for a deleted worksheet, sqlalchemy-excel removes the stale
+entry and returns an empty inspection result for that table name.
+
+Raw DDL executed through `text()` or `exec_driver_sql()` keeps metadata in sync
+for `CREATE TABLE`, `ALTER TABLE`, and `DROP TABLE`, so declared types
+round-trip through reflection.
 
 ```python
 from sqlalchemy import create_engine, inspect

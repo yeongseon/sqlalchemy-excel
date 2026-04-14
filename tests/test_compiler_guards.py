@@ -70,7 +70,7 @@ def test_compiler_arithmetic_multiplication(tmp_xlsx: str) -> None:
     """Arithmetic multiplication in SELECT should compile correctly."""
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
-    users, orders = _build_tables(metadata)
+    _users, orders = _build_tables(metadata)
 
     stmt = sa.select((orders.c.user_id * orders.c.id).label("total"))
     compiled = stmt.compile(dialect=engine.dialect)
@@ -85,7 +85,7 @@ def test_compiler_arithmetic_addition(tmp_xlsx: str) -> None:
     """Arithmetic addition in SELECT should compile correctly."""
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
-    users, orders = _build_tables(metadata)
+    _users, orders = _build_tables(metadata)
 
     stmt = sa.select(orders.c.user_id + orders.c.id)
     compiled = stmt.compile(dialect=engine.dialect)
@@ -114,7 +114,7 @@ def test_compiler_arithmetic_unary_negation(tmp_xlsx: str) -> None:
     """Unary negation should compile correctly."""
     engine = create_engine(f"excel:///{tmp_xlsx}")
     metadata = MetaData()
-    users, orders = _build_tables(metadata)
+    _users, orders = _build_tables(metadata)
 
     stmt = sa.select((-orders.c.user_id).label("neg"))
     compiled = stmt.compile(dialect=engine.dialect)
@@ -130,9 +130,8 @@ def test_compiler_arithmetic_with_join(tmp_xlsx: str) -> None:
     metadata = MetaData()
     users, orders = _build_tables(metadata)
 
-    stmt = (
-        sa.select((users.c.id * orders.c.user_id).label("product"))
-        .join(orders, users.c.id == orders.c.user_id)
+    stmt = sa.select((users.c.id * orders.c.user_id).label("product")).join(
+        orders, users.c.id == orders.c.user_id
     )
     compiled = stmt.compile(dialect=engine.dialect)
     sql = " ".join(str(compiled).split())
@@ -194,7 +193,9 @@ def test_insert_from_select_compiles(tmp_xlsx: str) -> None:
         Column("name", String),
     )
 
-    stmt = target.insert().from_select(["id", "name"], select(source.c.id, source.c.name))
+    stmt = target.insert().from_select(
+        ["id", "name"], select(source.c.id, source.c.name)
+    )
     compiled = stmt.compile(dialect=engine.dialect)
     sql = " ".join(str(compiled).split())
 
@@ -374,6 +375,7 @@ def test_compiler_allows_not_in_subquery(tmp_xlsx: str) -> None:
     assert "NOT IN" in sql
     engine.dispose()
 
+
 def test_compiler_accepts_update_with_subquery(tmp_xlsx: str) -> None:
     """UPDATE with IN subquery should compile successfully."""
     engine = create_engine(f"excel:///{tmp_xlsx}")
@@ -418,6 +420,7 @@ def test_compiler_rejects_nested_subquery(tmp_xlsx: str) -> None:
     with pytest.raises(exc.CompileError, match="nested subqueries"):
         stmt.compile(dialect=engine.dialect)
     engine.dispose()
+
 
 def test_compiler_visit_label_and_group_by_paths(tmp_xlsx: str) -> None:
     engine = create_engine(f"excel:///{tmp_xlsx}")
@@ -513,7 +516,7 @@ def test_dialect_autocommit_query_parsing_and_no_params_execution() -> None:
         "SELECT   'a   b', \"x   y\"   FROM\t users  WHERE  id = 1",
     )
     assert cursor_quotes.calls == [
-        ('SELECT \'a   b\', "x   y" FROM users WHERE id = 1', None)
+        ("SELECT 'a   b', \"x   y\" FROM users WHERE id = 1", None)
     ]
 
     cursor_params = CursorStub()
@@ -602,9 +605,7 @@ def test_compiler_accepts_join_with_aggregate(tmp_xlsx: str) -> None:
     metadata = MetaData()
     users, orders = _build_tables(metadata)
 
-    stmt = select(func.count(users.c.id)).join(
-        orders, users.c.id == orders.c.user_id
-    )
+    stmt = select(func.count(users.c.id)).join(orders, users.c.id == orders.c.user_id)
     compiled = stmt.compile(dialect=engine.dialect)
     sql = " ".join(str(compiled).split())
     assert "COUNT(" in sql.upper()
@@ -687,9 +688,8 @@ def test_compiler_rejects_subquery_containing_join(tmp_xlsx: str) -> None:
     )
 
     # Subquery: SELECT users.id FROM users JOIN orders ON users.id = orders.user_id
-    inner_join_subquery = (
-        select(users.c.id)
-        .join(orders, users.c.id == orders.c.user_id)
+    inner_join_subquery = select(users.c.id).join(
+        orders, users.c.id == orders.c.user_id
     )
     stmt = select(admins.c.id).where(admins.c.id.in_(inner_join_subquery))
     with pytest.raises(exc.CompileError, match="JOIN inside subqueries"):
@@ -849,9 +849,8 @@ def test_compiler_accepts_full_outer_join(tmp_xlsx: str) -> None:
     metadata = MetaData()
     users, orders = _build_tables(metadata)
 
-    stmt = (
-        select(users.c.name, orders.c.user_id)
-        .join(orders, users.c.id == orders.c.user_id, full=True)
+    stmt = select(users.c.name, orders.c.user_id).join(
+        orders, users.c.id == orders.c.user_id, full=True
     )
     compiled = stmt.compile(dialect=engine.dialect)
     sql = " ".join(str(compiled).split())
@@ -892,9 +891,8 @@ def test_compiler_rejects_non_equality_on_clause(tmp_xlsx: str) -> None:
     metadata = MetaData()
     users, orders = _build_tables(metadata)
 
-    stmt = (
-        select(users.c.name, orders.c.user_id)
-        .join(orders, users.c.id > orders.c.user_id)
+    stmt = select(users.c.name, orders.c.user_id).join(
+        orders, users.c.id > orders.c.user_id
     )
     with pytest.raises(exc.CompileError, match="'=' comparisons"):
         stmt.compile(dialect=engine.dialect)
@@ -909,10 +907,7 @@ def test_compiler_accepts_true_on_clause_as_cross_join(tmp_xlsx: str) -> None:
     metadata = MetaData()
     users, orders = _build_tables(metadata)
 
-    stmt = (
-        select(users.c.name, orders.c.user_id)
-        .join(orders, sa.true())
-    )
+    stmt = select(users.c.name, orders.c.user_id).join(orders, sa.true())
     compiled = stmt.compile(dialect=engine.dialect)
     sql = " ".join(str(compiled).split())
     assert "CROSS JOIN" in sql
@@ -927,10 +922,7 @@ def test_compiler_accepts_wrapped_true_as_cross_join(tmp_xlsx: str) -> None:
     metadata = MetaData()
     users, orders = _build_tables(metadata)
 
-    stmt = (
-        select(users.c.name, orders.c.user_id)
-        .join(orders, sa.true().self_group())
-    )
+    stmt = select(users.c.name, orders.c.user_id).join(orders, sa.true().self_group())
     compiled = stmt.compile(dialect=engine.dialect)
     sql = " ".join(str(compiled).split())
     assert "CROSS JOIN" in sql
@@ -945,10 +937,7 @@ def test_compiler_rejects_literal_true_as_cross_join(tmp_xlsx: str) -> None:
     metadata = MetaData()
     users, orders = _build_tables(metadata)
 
-    stmt = (
-        select(users.c.name, orders.c.user_id)
-        .join(orders, sa.literal(True))
-    )
+    stmt = select(users.c.name, orders.c.user_id).join(orders, sa.literal(True))
     with pytest.raises(exc.CompileError, match="equality comparisons"):
         stmt.compile(dialect=engine.dialect)
 
@@ -973,12 +962,9 @@ def test_compiler_accepts_and_combined_equality_on(tmp_xlsx: str) -> None:
         Column("dept_id", Integer),
     )
 
-    stmt = (
-        select(users.c.id, orders.c.id)
-        .join(
-            orders,
-            (users.c.id == orders.c.user_id) & (users.c.dept_id == orders.c.dept_id),
-        )
+    stmt = select(users.c.id, orders.c.id).join(
+        orders,
+        (users.c.id == orders.c.user_id) & (users.c.dept_id == orders.c.dept_id),
     )
     # Should not raise
     compiled = stmt.compile(dialect=engine.dialect)
@@ -1009,12 +995,9 @@ def test_compiler_rejects_or_on_clause(tmp_xlsx: str) -> None:
         Column("dept_id", Integer),
     )
 
-    stmt = (
-        select(users.c.id, orders.c.id)
-        .join(
-            orders,
-            or_(users.c.id == orders.c.user_id, users.c.dept_id == orders.c.dept_id),
-        )
+    stmt = select(users.c.id, orders.c.id).join(
+        orders,
+        or_(users.c.id == orders.c.user_id, users.c.dept_id == orders.c.dept_id),
     )
     with pytest.raises(exc.CompileError, match="OR"):
         stmt.compile(dialect=engine.dialect)
@@ -1028,10 +1011,7 @@ def test_compiler_rejects_literal_operand_in_on(tmp_xlsx: str) -> None:
     metadata = MetaData()
     users, orders = _build_tables(metadata)
 
-    stmt = (
-        select(users.c.name, orders.c.user_id)
-        .join(orders, users.c.id == 1)
-    )
+    stmt = select(users.c.name, orders.c.user_id).join(orders, users.c.id == 1)
     with pytest.raises(exc.CompileError, match="column references"):
         stmt.compile(dialect=engine.dialect)
 
@@ -1044,9 +1024,8 @@ def test_compiler_rejects_arithmetic_operand_in_on(tmp_xlsx: str) -> None:
     metadata = MetaData()
     users, orders = _build_tables(metadata)
 
-    stmt = (
-        select(users.c.name, orders.c.user_id)
-        .join(orders, users.c.id == (orders.c.user_id + 1))
+    stmt = select(users.c.name, orders.c.user_id).join(
+        orders, users.c.id == (orders.c.user_id + 1)
     )
     with pytest.raises(exc.CompileError, match="column references"):
         stmt.compile(dialect=engine.dialect)
@@ -1062,9 +1041,8 @@ def test_compiler_rejects_function_operand_in_on(tmp_xlsx: str) -> None:
     metadata = MetaData()
     users, orders = _build_tables(metadata)
 
-    stmt = (
-        select(users.c.name, orders.c.user_id)
-        .join(orders, users.c.id == func.abs(orders.c.user_id))
+    stmt = select(users.c.name, orders.c.user_id).join(
+        orders, users.c.id == func.abs(orders.c.user_id)
     )
     with pytest.raises(exc.CompileError, match="column references"):
         stmt.compile(dialect=engine.dialect)
@@ -1089,10 +1067,7 @@ def test_compiler_rejects_same_side_on_clause(tmp_xlsx: str) -> None:
         Column("user_id", Integer),
     )
 
-    stmt = (
-        select(users.c.id, orders.c.id)
-        .join(orders, users.c.id == users.c.age)
-    )
+    stmt = select(users.c.id, orders.c.id).join(orders, users.c.id == users.c.age)
     with pytest.raises(exc.CompileError, match="different join sources"):
         stmt.compile(dialect=engine.dialect)
 
@@ -1122,9 +1097,13 @@ def test_compiler_handles_grouping_wrapper_in_on(tmp_xlsx: str) -> None:
 
     # Build an AND clause and explicitly wrap it in a Grouping node
     # to exercise the __visit_name__ == "grouping" path in _check_on_clause
-    and_clause = and_(users.c.id == orders.c.user_id, users.c.dept_id == orders.c.dept_id)
+    and_clause = and_(
+        users.c.id == orders.c.user_id, users.c.dept_id == orders.c.dept_id
+    )
     grouped_on = Grouping(and_clause)
-    assert grouped_on.__visit_name__ == "grouping"  # confirm we're hitting the right path
+    assert (
+        grouped_on.__visit_name__ == "grouping"
+    )  # confirm we're hitting the right path
 
     # Manually construct the join with the Grouping-wrapped ON clause
     j = users.join(orders, onclause=grouped_on)
@@ -1212,7 +1191,9 @@ def test_compound_outer_order_by_with_limit(tmp_xlsx: str) -> None:
     metadata = MetaData()
     users, _ = _build_tables(metadata)
 
-    stmt = sa.union(select(users.c.id), select(users.c.id)).order_by(users.c.id).limit(5)
+    stmt = (
+        sa.union(select(users.c.id), select(users.c.id)).order_by(users.c.id).limit(5)
+    )
     sql = " ".join(str(stmt.compile(dialect=engine.dialect)).split())
     assert "ORDER BY id" in sql
     assert "LIMIT" in sql
@@ -1282,9 +1263,12 @@ def test_strip_compound_branch_parens_unit() -> None:
     from sqlalchemy_excel.compiler import ExcelCompiler
 
     # Simple branch wrapper is stripped.
-    assert ExcelCompiler._strip_compound_branch_parens(
-        "(SELECT id FROM t1 ORDER BY id DESC) UNION SELECT id FROM t2"
-    ) == "SELECT id FROM t1 UNION SELECT id FROM t2"
+    assert (
+        ExcelCompiler._strip_compound_branch_parens(
+            "(SELECT id FROM t1 ORDER BY id DESC) UNION SELECT id FROM t2"
+        )
+        == "SELECT id FROM t1 UNION SELECT id FROM t2"
+    )
 
     # Inner IN (...) is preserved even when branch is wrapped.
     result = ExcelCompiler._strip_compound_branch_parens(
@@ -1303,14 +1287,20 @@ def test_strip_compound_branch_parens_unit() -> None:
     assert "ORDER BY" not in result
 
     # Non-branch parens (e.g. standalone IN list) are untouched.
-    assert ExcelCompiler._strip_compound_branch_parens(
-        "SELECT id FROM t1 WHERE id IN (1, 2) UNION SELECT id FROM t2"
-    ) == "SELECT id FROM t1 WHERE id IN (1, 2) UNION SELECT id FROM t2"
+    assert (
+        ExcelCompiler._strip_compound_branch_parens(
+            "SELECT id FROM t1 WHERE id IN (1, 2) UNION SELECT id FROM t2"
+        )
+        == "SELECT id FROM t1 WHERE id IN (1, 2) UNION SELECT id FROM t2"
+    )
 
     # No parens at all — passthrough.
-    assert ExcelCompiler._strip_compound_branch_parens(
-        "SELECT id FROM t1 UNION SELECT id FROM t2"
-    ) == "SELECT id FROM t1 UNION SELECT id FROM t2"
+    assert (
+        ExcelCompiler._strip_compound_branch_parens(
+            "SELECT id FROM t1 UNION SELECT id FROM t2"
+        )
+        == "SELECT id FROM t1 UNION SELECT id FROM t2"
+    )
 
     # Multi-column ORDER BY is fully stripped.
     result = ExcelCompiler._strip_compound_branch_parens(
@@ -1450,9 +1440,7 @@ def test_strip_top_level_order_by_preserves_limit() -> None:
     assert "LIMIT 3" in result
 
     # No ORDER BY — passthrough.
-    result = ExcelCompiler._strip_top_level_order_by(
-        "SELECT id FROM t LIMIT 5"
-    )
+    result = ExcelCompiler._strip_top_level_order_by("SELECT id FROM t LIMIT 5")
     assert result == "SELECT id FROM t LIMIT 5"
 
     # LIMIT with placeholder.
@@ -1468,9 +1456,7 @@ def test_strip_top_level_order_by_preserves_limit() -> None:
     assert result == "SELECT orderby_col FROM t LIMIT 5"
 
     # Identifier 'reorder' must not be matched.
-    result = ExcelCompiler._strip_top_level_order_by(
-        "SELECT reorder FROM t"
-    )
+    result = ExcelCompiler._strip_top_level_order_by("SELECT reorder FROM t")
     assert result == "SELECT reorder FROM t"
 
 
@@ -1481,23 +1467,32 @@ def test_has_top_level_limit_offset_identifier_boundary() -> None:
     # Real LIMIT keyword.
     assert ExcelCompiler._has_top_level_limit_offset("SELECT id FROM t LIMIT 5") is True
     # Real OFFSET keyword.
-    assert ExcelCompiler._has_top_level_limit_offset("SELECT id FROM t OFFSET 2") is True
+    assert (
+        ExcelCompiler._has_top_level_limit_offset("SELECT id FROM t OFFSET 2") is True
+    )
     # Identifier containing LIMIT (e.g. limit_col).
-    assert ExcelCompiler._has_top_level_limit_offset(
-        "SELECT limit_col FROM t WHERE limit_value > 1"
-    ) is False
+    assert (
+        ExcelCompiler._has_top_level_limit_offset(
+            "SELECT limit_col FROM t WHERE limit_value > 1"
+        )
+        is False
+    )
     # Identifier containing OFFSET (e.g. offset_value).
-    assert ExcelCompiler._has_top_level_limit_offset(
-        "SELECT offset_value FROM t"
-    ) is False
+    assert (
+        ExcelCompiler._has_top_level_limit_offset("SELECT offset_value FROM t") is False
+    )
     # LIMIT inside parens (subquery) — not top-level.
-    assert ExcelCompiler._has_top_level_limit_offset(
-        "SELECT id FROM t WHERE id IN (SELECT id FROM t2 LIMIT 1)"
-    ) is False
+    assert (
+        ExcelCompiler._has_top_level_limit_offset(
+            "SELECT id FROM t WHERE id IN (SELECT id FROM t2 LIMIT 1)"
+        )
+        is False
+    )
     # Mixed: identifier + real LIMIT.
-    assert ExcelCompiler._has_top_level_limit_offset(
-        "SELECT limit_col FROM t LIMIT 5"
-    ) is True
+    assert (
+        ExcelCompiler._has_top_level_limit_offset("SELECT limit_col FROM t LIMIT 5")
+        is True
+    )
 
 
 def test_compound_mixed_operators_flat(tmp_xlsx: str) -> None:
@@ -1536,11 +1531,7 @@ def test_strip_compound_branch_parens_mixed_operators_unit() -> None:
     assert ExcelCompiler._strip_compound_branch_parens(sql) == sql
 
     # Flat with EXCEPT.
-    sql2 = (
-        "SELECT id FROM t1 "
-        "UNION SELECT id FROM t2 "
-        "EXCEPT SELECT id FROM t3"
-    )
+    sql2 = "SELECT id FROM t1 UNION SELECT id FROM t2 EXCEPT SELECT id FROM t3"
     assert ExcelCompiler._strip_compound_branch_parens(sql2) == sql2
 
 
@@ -1548,10 +1539,7 @@ def test_strip_compound_branch_parens_grouped_raises() -> None:
     """Grouped compound branch raises CompileError."""
     from sqlalchemy_excel.compiler import ExcelCompiler
 
-    grouped = (
-        "SELECT id FROM t1 "
-        "UNION (SELECT id FROM t2 INTERSECT SELECT id FROM t3)"
-    )
+    grouped = "SELECT id FROM t1 UNION (SELECT id FROM t2 INTERSECT SELECT id FROM t3)"
     with pytest.raises(exc.CompileError, match="grouped/nested compound"):
         ExcelCompiler._strip_compound_branch_parens(grouped)
 
@@ -1561,8 +1549,7 @@ def test_strip_compound_branch_parens_grouped_union_all_raises() -> None:
     from sqlalchemy_excel.compiler import ExcelCompiler
 
     grouped = (
-        "SELECT id FROM t1 "
-        "UNION ALL (SELECT id FROM t2 UNION ALL SELECT id FROM t3)"
+        "SELECT id FROM t1 UNION ALL (SELECT id FROM t2 UNION ALL SELECT id FROM t3)"
     )
     with pytest.raises(exc.CompileError, match="grouped/nested compound"):
         ExcelCompiler._strip_compound_branch_parens(grouped)
@@ -1639,8 +1626,7 @@ def test_strip_compound_branch_parens_double_wrapped_grouped() -> None:
 
     # The outer parens wrap a branch that itself is grouped.
     double_wrapped = (
-        "SELECT id FROM t1 "
-        "UNION ((SELECT id FROM t2 INTERSECT SELECT id FROM t3))"
+        "SELECT id FROM t1 UNION ((SELECT id FROM t2 INTERSECT SELECT id FROM t3))"
     )
     # The outer '(' is matched and inner content starts with '(' not 'SELECT',
     # so it is NOT treated as a branch — it passes through unchanged.
@@ -1676,9 +1662,7 @@ def test_cross_join_no_sa_warning(tmp_xlsx: str) -> None:
             rows = conn.execute(stmt).fetchall()
             assert rows == [(1, "w")]
 
-    cartesian_warnings = [
-        w for w in caught if "cartesian" in str(w.message).lower()
-    ]
+    cartesian_warnings = [w for w in caught if "cartesian" in str(w.message).lower()]
     assert cartesian_warnings == [], (
         f"CROSS JOIN should not emit cartesian warning: {cartesian_warnings}"
     )

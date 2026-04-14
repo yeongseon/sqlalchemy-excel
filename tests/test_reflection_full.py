@@ -39,3 +39,40 @@ def test_reflection_empty_return_methods(tmp_path) -> None:
     assert insp.get_schema_names() == []
 
     engine.dispose()
+
+
+def test_reflection_cleans_stale_metadata_when_sheet_is_missing(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+
+    with engine.connect() as conn:
+        import excel_dbapi
+
+        raw_conn = conn.connection.dbapi_connection
+        excel_dbapi.write_table_metadata(
+            raw_conn,
+            "ghost",
+            [
+                {
+                    "name": "id",
+                    "type_name": "INTEGER",
+                    "nullable": False,
+                    "primary_key": True,
+                }
+            ],
+        )
+        assert excel_dbapi.read_table_metadata(raw_conn, "ghost") is not None
+
+    inspector = inspect(engine)
+    assert inspector.get_columns("ghost") == []
+    assert inspector.get_pk_constraint("ghost") == {
+        "constrained_columns": [],
+        "name": None,
+    }
+
+    with engine.connect() as conn:
+        import excel_dbapi
+
+        raw_conn = conn.connection.dbapi_connection
+        assert excel_dbapi.read_table_metadata(raw_conn, "ghost") is None
+
+    engine.dispose()

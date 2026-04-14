@@ -151,9 +151,13 @@ def test_insert_from_select_e2e(tmp_path) -> None:
     metadata.create_all(engine)
 
     with engine.begin() as conn:
-        conn.execute(insert(source), [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}])
         conn.execute(
-            target.insert().from_select(["id", "name"], select(source.c.id, source.c.name))
+            insert(source), [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+        )
+        conn.execute(
+            target.insert().from_select(
+                ["id", "name"], select(source.c.id, source.c.name)
+            )
         )
 
     with engine.connect() as conn:
@@ -454,7 +458,13 @@ def test_e2e_cross_join_raw_sql(tmp_path) -> None:
     metadata.create_all(engine)
 
     with engine.begin() as conn:
-        conn.execute(insert(users), [{"id": 1, "name": "Alice", "age": 30}, {"id": 2, "name": "Bob", "age": 25}])
+        conn.execute(
+            insert(users),
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+            ],
+        )
         conn.execute(insert(teams), [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}])
 
     with engine.connect() as conn:
@@ -539,7 +549,11 @@ def test_e2e_update_with_subquery_in_where(tmp_path) -> None:
     with engine.begin() as conn:
         conn.execute(
             insert(users),
-            [{"id": 1, "name": "Alice", "age": 30}, {"id": 2, "name": "Bob", "age": 25}, {"id": 3, "name": "Charlie", "age": 35}],
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+                {"id": 3, "name": "Charlie", "age": 35},
+            ],
         )
         conn.execute(insert(admins), [{"id": 1}, {"id": 3}])
 
@@ -549,7 +563,9 @@ def test_e2e_update_with_subquery_in_where(tmp_path) -> None:
         assert result.rowcount == 2
 
     with engine.connect() as conn:
-        rows = conn.execute(select(users.c.name, users.c.age).order_by(users.c.id)).all()
+        rows = conn.execute(
+            select(users.c.name, users.c.age).order_by(users.c.id)
+        ).all()
         assert rows == [("Alice", 99), ("Bob", 25), ("Charlie", 99)]
 
     engine.dispose()
@@ -569,7 +585,11 @@ def test_e2e_delete_with_subquery_in_where(tmp_path) -> None:
     with engine.begin() as conn:
         conn.execute(
             insert(users),
-            [{"id": 1, "name": "Alice", "age": 30}, {"id": 2, "name": "Bob", "age": 25}, {"id": 3, "name": "Charlie", "age": 35}],
+            [
+                {"id": 1, "name": "Alice", "age": 30},
+                {"id": 2, "name": "Bob", "age": 25},
+                {"id": 3, "name": "Charlie", "age": 35},
+            ],
         )
         conn.execute(insert(admins), [{"id": 1}, {"id": 3}])
 
@@ -583,6 +603,7 @@ def test_e2e_delete_with_subquery_in_where(tmp_path) -> None:
         assert rows == [("Alice",), ("Charlie",)]
 
     engine.dispose()
+
 
 def test_e2e_aggregate_count(tmp_path) -> None:
     engine = _engine_for(tmp_path)
@@ -621,7 +642,9 @@ def test_count_distinct_basic(tmp_path) -> None:
         )
 
     with engine.connect() as conn:
-        stmt = select(sa.func.count(sa.distinct(employees.c.dept))).select_from(employees)
+        stmt = select(sa.func.count(sa.distinct(employees.c.dept))).select_from(
+            employees
+        )
         unique_depts = conn.execute(stmt).scalar_one()
         assert unique_depts == 2
 
@@ -690,7 +713,9 @@ def test_e2e_arithmetic_multiplication(tmp_path) -> None:
     _seed_arithmetic_data(engine, arith)
 
     with engine.connect() as conn:
-        stmt = sa.select((arith.c.price * arith.c.qty).label("total")).order_by(arith.c.id)
+        stmt = sa.select((arith.c.price * arith.c.qty).label("total")).order_by(
+            arith.c.id
+        )
         result = conn.execute(stmt)
         rows = result.fetchall()
         assert rows == [(500,), (600,), (0,)]
@@ -706,7 +731,9 @@ def test_e2e_arithmetic_addition(tmp_path) -> None:
     _seed_arithmetic_data(engine, arith)
 
     with engine.connect() as conn:
-        stmt = sa.select((arith.c.price + arith.c.tax).label("sum")).order_by(arith.c.id)
+        stmt = sa.select((arith.c.price + arith.c.tax).label("sum")).order_by(
+            arith.c.id
+        )
         result = conn.execute(stmt)
         rows = result.fetchall()
         assert rows == [(110,), (220,), (330,)]
@@ -722,7 +749,9 @@ def test_e2e_arithmetic_subtraction(tmp_path) -> None:
     _seed_arithmetic_data(engine, arith)
 
     with engine.connect() as conn:
-        stmt = sa.select((arith.c.price - arith.c.tax).label("diff")).order_by(arith.c.id)
+        stmt = sa.select((arith.c.price - arith.c.tax).label("diff")).order_by(
+            arith.c.id
+        )
         result = conn.execute(stmt)
         rows = result.fetchall()
         assert rows == [(90,), (180,), (270,)]
@@ -738,9 +767,9 @@ def test_e2e_arithmetic_complex_expression(tmp_path) -> None:
     _seed_arithmetic_data(engine, arith)
 
     with engine.connect() as conn:
-        stmt = sa.select(((arith.c.price + arith.c.tax) * arith.c.qty).label("total")).order_by(
-            arith.c.id
-        )
+        stmt = sa.select(
+            ((arith.c.price + arith.c.tax) * arith.c.qty).label("total")
+        ).order_by(arith.c.id)
         result = conn.execute(stmt)
         rows = result.fetchall()
         assert rows == [(550,), (660,), (0,)]
@@ -772,7 +801,9 @@ def test_e2e_arithmetic_with_alias(tmp_path) -> None:
     _seed_arithmetic_data(engine, arith)
 
     with engine.connect() as conn:
-        stmt = sa.select((arith.c.price * arith.c.qty).label("custom_name")).order_by(arith.c.id)
+        stmt = sa.select((arith.c.price * arith.c.qty).label("custom_name")).order_by(
+            arith.c.id
+        )
         result = conn.execute(stmt)
         cursor = result.cursor
         assert cursor is not None
@@ -815,7 +846,9 @@ def test_e2e_arithmetic_null_propagation(tmp_path) -> None:
         conn.execute(insert(arith).values(id=4, price=None, qty=2, tax=10))
 
     with engine.connect() as conn:
-        stmt = sa.select((arith.c.price * arith.c.qty).label("total")).where(arith.c.id == 4)
+        stmt = sa.select((arith.c.price * arith.c.qty).label("total")).where(
+            arith.c.id == 4
+        )
         result = conn.execute(stmt)
         rows = result.fetchall()
         assert rows == [(None,)]
@@ -831,9 +864,9 @@ def test_e2e_arithmetic_with_literal(tmp_path) -> None:
     _seed_arithmetic_data(engine, arith)
 
     with engine.connect() as conn:
-        stmt = sa.select((arith.c.price * sa.literal_column("2")).label("doubled")).order_by(
-            arith.c.id
-        )
+        stmt = sa.select(
+            (arith.c.price * sa.literal_column("2")).label("doubled")
+        ).order_by(arith.c.id)
         result = conn.execute(stmt)
         rows = result.fetchall()
         assert rows == [(200,), (400,), (600,)]
@@ -849,7 +882,9 @@ def test_e2e_arithmetic_order_by_alias(tmp_path) -> None:
     _seed_arithmetic_data(engine, arith)
 
     with engine.connect() as conn:
-        stmt = sa.select((arith.c.price * arith.c.qty).label("total")).order_by(sa.text("total"))
+        stmt = sa.select((arith.c.price * arith.c.qty).label("total")).order_by(
+            sa.text("total")
+        )
         result = conn.execute(stmt)
         rows = result.fetchall()
         assert rows == [(0,), (500,), (600,)]
@@ -1138,9 +1173,7 @@ def test_e2e_group_by_order_by_group_key_not_in_select(tmp_path) -> None:
 
     with engine.connect() as conn:
         stmt = (
-            select(func.count(users.c.id))
-            .group_by(users.c.name)
-            .order_by(users.c.name)
+            select(func.count(users.c.id)).group_by(users.c.name).order_by(users.c.name)
         )
         rows = conn.execute(stmt).all()
         assert rows == [(2,), (1,)]
@@ -1381,6 +1414,7 @@ def test_e2e_group_by_join_multiple_columns(tmp_path) -> None:
 
     engine.dispose()
 
+
 def test_e2e_group_by_join_explicit_alias(tmp_path) -> None:
     """Regression: GROUP BY + JOIN with explicit SQLAlchemy aliases."""
     engine = _engine_for(tmp_path)
@@ -1447,6 +1481,7 @@ def test_e2e_rejects_aggregate_arithmetic_projection(tmp_path) -> None:
 
     engine.dispose()
 
+
 def test_e2e_offset_compiles_and_executes(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
@@ -1459,9 +1494,7 @@ def test_e2e_offset_compiles_and_executes(tmp_path) -> None:
         conn.execute(insert(users).values(id=3, name="Charlie", age=35))
 
     with engine.connect() as conn:
-        rows = conn.execute(
-            select(users).order_by(users.c.id).limit(2).offset(1)
-        ).all()
+        rows = conn.execute(select(users).order_by(users.c.id).limit(2).offset(1)).all()
         assert rows == [(2, "Bob", 25), (3, "Charlie", 35)]
 
     engine.dispose()
@@ -1479,9 +1512,7 @@ def test_e2e_distinct_compiles_and_executes(tmp_path) -> None:
         conn.execute(insert(users).values(id=3, name="Bob", age=30))
 
     with engine.connect() as conn:
-        rows = conn.execute(
-            select(users.c.name).distinct()
-        ).all()
+        rows = conn.execute(select(users.c.name).distinct()).all()
         names = [r[0] for r in rows]
         assert sorted(names) == ["Alice", "Bob"]
 
@@ -1507,8 +1538,12 @@ def test_union_e2e(tmp_path) -> None:
     metadata.create_all(engine)
 
     with engine.begin() as conn:
-        conn.execute(insert(sheet1), [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}])
-        conn.execute(insert(sheet2), [{"id": 2, "name": "Bob"}, {"id": 3, "name": "Cara"}])
+        conn.execute(
+            insert(sheet1), [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+        )
+        conn.execute(
+            insert(sheet2), [{"id": 2, "name": "Bob"}, {"id": 3, "name": "Cara"}]
+        )
 
     t1 = Table("Sheet1", MetaData(), autoload_with=engine)
     t2 = Table("Sheet2", MetaData(), autoload_with=engine)
@@ -1539,8 +1574,12 @@ def test_union_all_e2e(tmp_path) -> None:
     metadata.create_all(engine)
 
     with engine.begin() as conn:
-        conn.execute(insert(sheet1), [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}])
-        conn.execute(insert(sheet2), [{"id": 2, "name": "Bob"}, {"id": 3, "name": "Cara"}])
+        conn.execute(
+            insert(sheet1), [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+        )
+        conn.execute(
+            insert(sheet2), [{"id": 2, "name": "Bob"}, {"id": 3, "name": "Cara"}]
+        )
 
     t1 = Table("Sheet1", MetaData(), autoload_with=engine)
     t2 = Table("Sheet2", MetaData(), autoload_with=engine)
@@ -1571,8 +1610,12 @@ def test_intersect_e2e(tmp_path) -> None:
     metadata.create_all(engine)
 
     with engine.begin() as conn:
-        conn.execute(insert(sheet1), [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}])
-        conn.execute(insert(sheet2), [{"id": 2, "name": "Bob"}, {"id": 3, "name": "Cara"}])
+        conn.execute(
+            insert(sheet1), [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+        )
+        conn.execute(
+            insert(sheet2), [{"id": 2, "name": "Bob"}, {"id": 3, "name": "Cara"}]
+        )
 
     t1 = Table("Sheet1", MetaData(), autoload_with=engine)
     t2 = Table("Sheet2", MetaData(), autoload_with=engine)
@@ -1603,8 +1646,12 @@ def test_except_e2e(tmp_path) -> None:
     metadata.create_all(engine)
 
     with engine.begin() as conn:
-        conn.execute(insert(sheet1), [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}])
-        conn.execute(insert(sheet2), [{"id": 2, "name": "Bob"}, {"id": 3, "name": "Cara"}])
+        conn.execute(
+            insert(sheet1), [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+        )
+        conn.execute(
+            insert(sheet2), [{"id": 2, "name": "Bob"}, {"id": 3, "name": "Cara"}]
+        )
 
     t1 = Table("Sheet1", MetaData(), autoload_with=engine)
     t2 = Table("Sheet2", MetaData(), autoload_with=engine)
@@ -1637,9 +1684,11 @@ def test_e2e_nested_subquery_rejected(tmp_path) -> None:
     inner = select(items.c.admin_id).where(items.c.id > 0)
     outer = select(admins.c.id).where(admins.c.id.in_(inner))
     stmt = select(users).where(users.c.id.in_(outer))
-    with pytest.raises(exc.CompileError, match="nested subqueries"):
-        with engine.connect() as conn:
-            conn.execute(stmt).all()
+    with (
+        pytest.raises(exc.CompileError, match="nested subqueries"),
+        engine.connect() as conn,
+    ):
+        conn.execute(stmt).all()
 
     engine.dispose()
 
@@ -1742,7 +1791,9 @@ def test_e2e_right_join_via_swapped_left_join(tmp_path) -> None:
     with engine.connect() as conn:
         stmt = (
             select(orders.c.id, users.c.name)
-            .select_from(orders.join(users, users.c.id == orders.c.user_id, isouter=True))
+            .select_from(
+                orders.join(users, users.c.id == orders.c.user_id, isouter=True)
+            )
             .order_by(orders.c.id)
         )
         rows = conn.execute(stmt).all()
@@ -1769,8 +1820,14 @@ def test_e2e_full_outer_join_basic(tmp_path) -> None:
     metadata.create_all(engine)
 
     with engine.begin() as conn:
-        conn.execute(insert(t1), [{"id": 1, "val1": "a1"}, {"id": 2, "val1": "a2"}, {"id": 4, "val1": "a4"}])
-        conn.execute(insert(t2), [{"id": 1, "val2": "b1"}, {"id": 2, "val2": "b2"}, {"id": 3, "val2": "b3"}])
+        conn.execute(
+            insert(t1),
+            [{"id": 1, "val1": "a1"}, {"id": 2, "val1": "a2"}, {"id": 4, "val1": "a4"}],
+        )
+        conn.execute(
+            insert(t2),
+            [{"id": 1, "val2": "b1"}, {"id": 2, "val2": "b2"}, {"id": 3, "val2": "b3"}],
+        )
 
     with engine.connect() as conn:
         stmt = select(t1.c.id, t1.c.val1, t2.c.id, t2.c.val2).select_from(
@@ -1778,7 +1835,9 @@ def test_e2e_full_outer_join_basic(tmp_path) -> None:
         )
         rows = conn.execute(stmt).all()
 
-    rows_sorted = sorted(rows, key=lambda r: (r[0] is None, r[0] or 0, r[2] is None, r[2] or 0))
+    rows_sorted = sorted(
+        rows, key=lambda r: (r[0] is None, r[0] or 0, r[2] is None, r[2] or 0)
+    )
     assert rows_sorted == [
         (1, "a1", 1, "b1"),
         (2, "a2", 2, "b2"),
@@ -1791,8 +1850,12 @@ def test_e2e_full_outer_join_basic(tmp_path) -> None:
 def test_e2e_full_outer_join_all_match(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
-    t1 = Table("t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String))
-    t2 = Table("t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String))
+    t1 = Table(
+        "t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String)
+    )
+    t2 = Table(
+        "t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String)
+    )
     metadata.create_all(engine)
 
     with engine.begin() as conn:
@@ -1816,13 +1879,23 @@ def test_e2e_full_outer_join_all_match(tmp_path) -> None:
 def test_e2e_full_outer_join_with_where(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
-    t1 = Table("t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String))
-    t2 = Table("t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String))
+    t1 = Table(
+        "t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String)
+    )
+    t2 = Table(
+        "t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String)
+    )
     metadata.create_all(engine)
 
     with engine.begin() as conn:
-        conn.execute(insert(t1), [{"id": 1, "val1": "a1"}, {"id": 2, "val1": "a2"}, {"id": 4, "val1": "a4"}])
-        conn.execute(insert(t2), [{"id": 1, "val2": "b1"}, {"id": 2, "val2": "b2"}, {"id": 3, "val2": "b3"}])
+        conn.execute(
+            insert(t1),
+            [{"id": 1, "val1": "a1"}, {"id": 2, "val1": "a2"}, {"id": 4, "val1": "a4"}],
+        )
+        conn.execute(
+            insert(t2),
+            [{"id": 1, "val2": "b1"}, {"id": 2, "val2": "b2"}, {"id": 3, "val2": "b3"}],
+        )
 
     with engine.connect() as conn:
         stmt = (
@@ -1830,7 +1903,10 @@ def test_e2e_full_outer_join_with_where(tmp_path) -> None:
             .select_from(t1.outerjoin(t2, t1.c.id == t2.c.id, full=True))
             .where(sa.or_(t1.c.id == 4, t2.c.id == 3))
         )
-        rows = sorted(conn.execute(stmt).all(), key=lambda r: (r[0] is None, r[0] or 0, r[1] is None, r[1] or 0))
+        rows = sorted(
+            conn.execute(stmt).all(),
+            key=lambda r: (r[0] is None, r[0] or 0, r[1] is None, r[1] or 0),
+        )
 
     assert rows == [(4, None), (None, 3)]
     engine.dispose()
@@ -1839,8 +1915,12 @@ def test_e2e_full_outer_join_with_where(tmp_path) -> None:
 def test_e2e_full_outer_join_select_star(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
-    t1 = Table("t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String))
-    t2 = Table("t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String))
+    t1 = Table(
+        "t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String)
+    )
+    t2 = Table(
+        "t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String)
+    )
     metadata.create_all(engine)
 
     with engine.begin() as conn:
@@ -1848,8 +1928,13 @@ def test_e2e_full_outer_join_select_star(tmp_path) -> None:
         conn.execute(insert(t2), [{"id": 1, "val2": "b1"}, {"id": 3, "val2": "b3"}])
 
     with engine.connect() as conn:
-        stmt = select(t1, t2).select_from(t1.outerjoin(t2, t1.c.id == t2.c.id, full=True))
-        rows = sorted(conn.execute(stmt).all(), key=lambda r: (r[0] is None, r[0] or 0, r[2] is None, r[2] or 0))
+        stmt = select(t1, t2).select_from(
+            t1.outerjoin(t2, t1.c.id == t2.c.id, full=True)
+        )
+        rows = sorted(
+            conn.execute(stmt).all(),
+            key=lambda r: (r[0] is None, r[0] or 0, r[2] is None, r[2] or 0),
+        )
 
     assert rows == [
         (1, "a1", 1, "b1"),
@@ -1862,8 +1947,12 @@ def test_e2e_full_outer_join_select_star(tmp_path) -> None:
 def test_e2e_cross_join_basic(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
-    t1 = Table("t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String))
-    t2 = Table("t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String))
+    t1 = Table(
+        "t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String)
+    )
+    t2 = Table(
+        "t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String)
+    )
     metadata.create_all(engine)
 
     with engine.begin() as conn:
@@ -1882,13 +1971,23 @@ def test_e2e_cross_join_basic(tmp_path) -> None:
 def test_e2e_cross_join_with_where(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
-    t1 = Table("t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String))
-    t2 = Table("t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String))
+    t1 = Table(
+        "t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String)
+    )
+    t2 = Table(
+        "t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String)
+    )
     metadata.create_all(engine)
 
     with engine.begin() as conn:
-        conn.execute(insert(t1), [{"id": 1, "val1": "a1"}, {"id": 2, "val1": "a2"}, {"id": 3, "val1": "a3"}])
-        conn.execute(insert(t2), [{"id": 2, "val2": "b2"}, {"id": 3, "val2": "b3"}, {"id": 9, "val2": "b9"}])
+        conn.execute(
+            insert(t1),
+            [{"id": 1, "val1": "a1"}, {"id": 2, "val1": "a2"}, {"id": 3, "val1": "a3"}],
+        )
+        conn.execute(
+            insert(t2),
+            [{"id": 2, "val2": "b2"}, {"id": 3, "val2": "b3"}, {"id": 9, "val2": "b9"}],
+        )
 
     with engine.connect() as conn:
         stmt = (
@@ -1906,8 +2005,12 @@ def test_e2e_cross_join_with_where(tmp_path) -> None:
 def test_e2e_cross_join_select_star(tmp_path) -> None:
     engine = _engine_for(tmp_path)
     metadata = MetaData()
-    t1 = Table("t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String))
-    t2 = Table("t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String))
+    t1 = Table(
+        "t1", metadata, Column("id", Integer, primary_key=True), Column("val1", String)
+    )
+    t2 = Table(
+        "t2", metadata, Column("id", Integer, primary_key=True), Column("val2", String)
+    )
     metadata.create_all(engine)
 
     with engine.begin() as conn:
@@ -1943,16 +2046,12 @@ def test_e2e_or_on_clause_rejected_at_compile_time(tmp_path) -> None:
     )
     metadata.create_all(engine)
 
-    stmt = (
-        select(users.c.name, orders.c.user_id)
-        .join(
-            orders,
-            or_(users.c.id == orders.c.user_id, users.c.id == orders.c.dept_id),
-        )
+    stmt = select(users.c.name, orders.c.user_id).join(
+        orders,
+        or_(users.c.id == orders.c.user_id, users.c.id == orders.c.dept_id),
     )
-    with pytest.raises(exc.CompileError, match="OR"):
-        with engine.connect() as conn:
-            conn.execute(stmt).all()
+    with pytest.raises(exc.CompileError, match="OR"), engine.connect() as conn:
+        conn.execute(stmt).all()
 
     engine.dispose()
 
@@ -1970,13 +2069,12 @@ def test_e2e_literal_on_clause_rejected_at_compile_time(tmp_path) -> None:
     )
     metadata.create_all(engine)
 
-    stmt = (
-        select(users.c.name, orders.c.user_id)
-        .join(orders, users.c.id == 1)
-    )
-    with pytest.raises(exc.CompileError, match="column references"):
-        with engine.connect() as conn:
-            conn.execute(stmt).all()
+    stmt = select(users.c.name, orders.c.user_id).join(orders, users.c.id == 1)
+    with (
+        pytest.raises(exc.CompileError, match="column references"),
+        engine.connect() as conn,
+    ):
+        conn.execute(stmt).all()
 
     engine.dispose()
 
@@ -2000,13 +2098,14 @@ def test_e2e_same_side_on_clause_rejected_at_compile_time(tmp_path) -> None:
     )
     metadata.create_all(engine)
 
-    stmt = (
-        select(users.c.name, orders.c.user_id)
-        .join(orders, users.c.id == users.c.age)
+    stmt = select(users.c.name, orders.c.user_id).join(
+        orders, users.c.id == users.c.age
     )
-    with pytest.raises(exc.CompileError, match="different join sources"):
-        with engine.connect() as conn:
-            conn.execute(stmt).all()
+    with (
+        pytest.raises(exc.CompileError, match="different join sources"),
+        engine.connect() as conn,
+    ):
+        conn.execute(stmt).all()
 
     engine.dispose()
 
@@ -2036,8 +2135,7 @@ def test_e2e_compound_with_mixed_join_branches(tmp_path) -> None:
     with engine.connect() as conn:
         # Branch 1: JOIN (users + orders), branch 2: single-table (users)
         stmt = sa.union(
-            select(users.c.id)
-            .join(orders, users.c.id == orders.c.user_id),
+            select(users.c.id).join(orders, users.c.id == orders.c.user_id),
             select(users.c.id),
         )
         rows = conn.execute(stmt).all()
@@ -2067,13 +2165,10 @@ def test_e2e_compound_with_outer_order_by(tmp_path) -> None:
     t = Table("users", MetaData(), autoload_with=engine)
     with engine.connect() as conn:
         # UNION ALL with compound-level ORDER BY DESC
-        stmt = (
-            sa.union_all(
-                select(t.c.id).where(t.c.id <= 2),
-                select(t.c.id).where(t.c.id >= 2),
-            )
-            .order_by(t.c.id.desc())
-        )
+        stmt = sa.union_all(
+            select(t.c.id).where(t.c.id <= 2),
+            select(t.c.id).where(t.c.id >= 2),
+        ).order_by(t.c.id.desc())
         rows = conn.execute(stmt).all()
         # UNION ALL keeps dupes: [1, 2] + [2, 3] = [1, 2, 2, 3], ORDER BY DESC → [3, 2, 2, 1]
         assert rows == [(3,), (2,), (2,), (1,)]
@@ -2149,8 +2244,6 @@ def test_e2e_compound_with_branch_local_limit(tmp_path) -> None:
         assert ids == [1, 2, 3, 3]
 
     engine.dispose()
-
-
 
 
 def test_e2e_compound_mixed_operators(tmp_path) -> None:
@@ -2232,8 +2325,10 @@ def test_e2e_not_in_subquery(tmp_path) -> None:
     metadata = MetaData()
     users = _users_table(metadata)
     scores = Table(
-        "scores", metadata,
-        Column("user_id", Integer), Column("score", Integer),
+        "scores",
+        metadata,
+        Column("user_id", Integer),
+        Column("score", Integer),
     )
     metadata.create_all(engine)
     with engine.begin() as conn:
@@ -2252,9 +2347,7 @@ def test_e2e_not_in_subquery(tmp_path) -> None:
 
     with engine.connect() as conn:
         sub = select(scores.c.user_id)
-        rows = conn.execute(
-            select(users.c.name).where(users.c.id.not_in(sub))
-        ).all()
+        rows = conn.execute(select(users.c.name).where(users.c.id.not_in(sub))).all()
         names = [r[0] for r in rows]
         assert names == ["Charlie"]
 
@@ -2330,9 +2423,7 @@ def test_e2e_not_operator(tmp_path) -> None:
 
     with engine.connect() as conn:
         # NOT (age >= 30)
-        rows = conn.execute(
-            select(users.c.name).where(~(users.c.age >= 30))
-        ).all()
+        rows = conn.execute(select(users.c.name).where(~(users.c.age >= 30))).all()
         names = sorted(r[0] for r in rows)
         # NOT age>=30: Bob(25), Diana(28)
         assert names == ["Bob", "Diana"]
@@ -2377,15 +2468,11 @@ def test_e2e_update_with_not_in(tmp_path) -> None:
 
     with engine.begin() as conn:
         conn.execute(
-            update(users)
-            .where(users.c.name.not_in(["Alice", "Bob"]))
-            .values(age=99)
+            update(users).where(users.c.name.not_in(["Alice", "Bob"])).values(age=99)
         )
 
     with engine.connect() as conn:
-        rows = conn.execute(
-            select(users.c.name).where(users.c.age == 99)
-        ).all()
+        rows = conn.execute(select(users.c.name).where(users.c.age == 99)).all()
         names = sorted(r[0] for r in rows)
         assert names == ["Charlie", "Diana", "Eve"]
 
@@ -2400,14 +2487,10 @@ def test_e2e_delete_with_not_between(tmp_path) -> None:
     _seed_phase10(engine, users)
 
     with engine.begin() as conn:
-        conn.execute(
-            delete(users).where(~users.c.age.between(25, 35))
-        )
+        conn.execute(delete(users).where(~users.c.age.between(25, 35)))
 
     with engine.connect() as conn:
-        rows = conn.execute(
-            select(users.c.name).order_by(users.c.id)
-        ).all()
+        rows = conn.execute(select(users.c.name).order_by(users.c.id)).all()
         names = [r[0] for r in rows]
         # Kept: Bob(25), Alice(30), Charlie(35), Diana(28)
         assert sorted(names) == ["Alice", "Bob", "Charlie", "Diana"]
@@ -2445,8 +2528,9 @@ def test_e2e_multi_order_by_age_asc_name_desc(tmp_path) -> None:
 
     with engine.connect() as conn:
         rows = conn.execute(
-            select(users.c.name, users.c.age)
-            .order_by(users.c.age.asc(), users.c.name.desc())
+            select(users.c.name, users.c.age).order_by(
+                users.c.age.asc(), users.c.name.desc()
+            )
         ).all()
         # age 25: Diana, Bob (DESC) → Diana, Bob
         # age 30: Eve, Charlie, Alice (DESC) → Eve, Charlie, Alice
@@ -2471,8 +2555,9 @@ def test_e2e_multi_order_by_name_asc_age_desc(tmp_path) -> None:
 
     with engine.connect() as conn:
         rows = conn.execute(
-            select(users.c.name, users.c.age)
-            .order_by(users.c.name.asc(), users.c.age.desc())
+            select(users.c.name, users.c.age).order_by(
+                users.c.name.asc(), users.c.age.desc()
+            )
         ).all()
         assert rows == [
             ("Alice", 30),
@@ -2547,10 +2632,7 @@ def test_e2e_multi_order_by_compound_union(tmp_path) -> None:
         # UNION ALL with compound-level multi-column ORDER BY
         q1 = select(t.c.name, t.c.age).where(t.c.age <= 25)
         q2 = select(t.c.name, t.c.age).where(t.c.age >= 30)
-        stmt = (
-            sa.union_all(q1, q2)
-            .order_by(t.c.age.asc(), t.c.name.asc())
-        )
+        stmt = sa.union_all(q1, q2).order_by(t.c.age.asc(), t.c.name.asc())
         rows = conn.execute(stmt).all()
         # age 25: Bob, Diana; age 30: Alice, Charlie, Eve
         assert rows == [
@@ -2590,9 +2672,7 @@ def test_e2e_select_star_inner_join(tmp_path) -> None:
     with engine.connect() as conn:
         stmt = (
             sa.select(sa.literal_column("*"))
-            .select_from(
-                users.join(orders, users.c.id == orders.c.user_id)
-            )
+            .select_from(users.join(orders, users.c.id == orders.c.user_id))
             .order_by(users.c.id)
         )
         result = conn.execute(stmt)
@@ -2668,11 +2748,9 @@ def test_e2e_select_star_chained_join(tmp_path) -> None:
         conn.execute(insert(items).values(id=100, order_id=10, sku="A-1"))
 
     with engine.connect() as conn:
-        stmt = (
-            sa.select(sa.literal_column("*"))
-            .select_from(
-                users.join(orders, users.c.id == orders.c.user_id)
-                .join(items, orders.c.id == items.c.order_id)
+        stmt = sa.select(sa.literal_column("*")).select_from(
+            users.join(orders, users.c.id == orders.c.user_id).join(
+                items, orders.c.id == items.c.order_id
             )
         )
         rows = conn.execute(stmt).all()
@@ -2706,9 +2784,7 @@ def test_e2e_select_star_with_where(tmp_path) -> None:
     with engine.connect() as conn:
         stmt = (
             sa.select(sa.literal_column("*"))
-            .select_from(
-                users.join(orders, users.c.id == orders.c.user_id)
-            )
+            .select_from(users.join(orders, users.c.id == orders.c.user_id))
             .where(users.c.name == "Alice")
         )
         rows = conn.execute(stmt).all()
@@ -2737,11 +2813,8 @@ def test_e2e_select_star_description_columns(tmp_path) -> None:
         conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
 
     with engine.connect() as conn:
-        stmt = (
-            sa.select(sa.literal_column("*"))
-            .select_from(
-                users.join(orders, users.c.id == orders.c.user_id)
-            )
+        stmt = sa.select(sa.literal_column("*")).select_from(
+            users.join(orders, users.c.id == orders.c.user_id)
         )
         result = conn.execute(stmt)
         cursor = result.cursor
@@ -2786,9 +2859,7 @@ def test_e2e_select_star_empty_result_has_description(tmp_path) -> None:
     with engine.connect() as conn:
         stmt = (
             sa.select(sa.literal_column("*"))
-            .select_from(
-                users.join(orders, users.c.id == orders.c.user_id)
-            )
+            .select_from(users.join(orders, users.c.id == orders.c.user_id))
             .where(users.c.id == 999)
         )
         result = conn.execute(stmt)
@@ -2830,11 +2901,8 @@ def test_e2e_select_star_labeled_rejected(tmp_path) -> None:
         conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
 
     with engine.connect() as conn:
-        stmt = (
-            sa.select(sa.literal_column("*").label("all_cols"))
-            .select_from(
-                users.join(orders, users.c.id == orders.c.user_id)
-            )
+        stmt = sa.select(sa.literal_column("*").label("all_cols")).select_from(
+            users.join(orders, users.c.id == orders.c.user_id)
         )
         with pytest.raises(exc.ProgrammingError):
             conn.execute(stmt)
@@ -2861,11 +2929,8 @@ def test_e2e_select_star_mixed_columns_rejected(tmp_path) -> None:
         conn.execute(insert(orders).values(id=1, user_id=1, amount=100))
 
     with engine.connect() as conn:
-        stmt = (
-            sa.select(sa.literal_column("*"), users.c.id)
-            .select_from(
-                users.join(orders, users.c.id == orders.c.user_id)
-            )
+        stmt = sa.select(sa.literal_column("*"), users.c.id).select_from(
+            users.join(orders, users.c.id == orders.c.user_id)
         )
         with pytest.raises(exc.ProgrammingError):
             conn.execute(stmt)
@@ -3170,16 +3235,13 @@ def test_e2e_case_when_with_order_by(tmp_path) -> None:
     _seed_status_data(engine, people)
 
     with engine.connect() as conn:
-        stmt = (
-            select(
-                people.c.name,
-                case(
-                    (people.c.status == "active", sa.literal("yes")),
-                    else_=sa.literal("no"),
-                ).label("active"),
-            )
-            .order_by(people.c.name)
-        )
+        stmt = select(
+            people.c.name,
+            case(
+                (people.c.status == "active", sa.literal("yes")),
+                else_=sa.literal("no"),
+            ).label("active"),
+        ).order_by(people.c.name)
         rows = conn.execute(stmt).all()
         assert rows == [
             ("Alice", "yes"),
@@ -3233,9 +3295,8 @@ def test_e2e_case_when_order_by_case_expression(tmp_path) -> None:
             (people.c.status == "active", sa.literal(0)),
             else_=sa.literal(1),
         )
-        stmt = (
-            select(people.c.name, people.c.status)
-            .order_by(case_expr.asc(), people.c.name)
+        stmt = select(people.c.name, people.c.status).order_by(
+            case_expr.asc(), people.c.name
         )
         rows = conn.execute(stmt).all()
         # active first (0), then others (1), each sub-sorted by name
@@ -3262,9 +3323,8 @@ def test_e2e_case_when_order_by_case_desc(tmp_path) -> None:
             (people.c.status == "active", sa.literal(0)),
             else_=sa.literal(1),
         )
-        stmt = (
-            select(people.c.name, people.c.status)
-            .order_by(case_expr.desc(), people.c.name)
+        stmt = select(people.c.name, people.c.status).order_by(
+            case_expr.desc(), people.c.name
         )
         rows = conn.execute(stmt).all()
         # non-active first (1 DESC), then active (0 DESC), sub-sorted by name ASC
@@ -3291,10 +3351,7 @@ def test_e2e_case_when_arithmetic_addition(tmp_path) -> None:
             (people.c.status == "active", people.c.age),
             else_=sa.literal(0),
         ) + sa.literal(100)
-        stmt = (
-            select(people.c.name, expr.label("boosted"))
-            .order_by(people.c.id)
-        )
+        stmt = select(people.c.name, expr.label("boosted")).order_by(people.c.id)
         rows = conn.execute(stmt).all()
         assert rows == [
             ("Alice", 130.0),
@@ -3316,18 +3373,15 @@ def test_e2e_case_when_simple_case(tmp_path) -> None:
 
     with engine.connect() as conn:
         # SA 2.0 uses searched CASE syntax; we test mapping each status
-        stmt = (
-            select(
-                people.c.name,
-                case(
-                    (people.c.status == "active", sa.literal("A")),
-                    (people.c.status == "inactive", sa.literal("I")),
-                    (people.c.status == "pending", sa.literal("P")),
-                    else_=sa.literal("?"),
-                ).label("code"),
-            )
-            .order_by(people.c.id)
-        )
+        stmt = select(
+            people.c.name,
+            case(
+                (people.c.status == "active", sa.literal("A")),
+                (people.c.status == "inactive", sa.literal("I")),
+                (people.c.status == "pending", sa.literal("P")),
+                else_=sa.literal("?"),
+            ).label("code"),
+        ).order_by(people.c.id)
         rows = conn.execute(stmt).all()
         assert rows == [
             ("Alice", "A"),
@@ -3364,6 +3418,56 @@ def test_e2e_alter_table_add_column(tmp_path) -> None:
             "SELECT id, name, email FROM users ORDER BY id"
         ).all()
         assert rows == [(1, "Alice", None), (2, "Bob", None)]
+
+    engine.dispose()
+
+
+def test_e2e_raw_create_table_reflects_declared_schema(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, age INTEGER NOT NULL, name TEXT)"
+        )
+
+    inspector = inspect(engine)
+    columns = inspector.get_columns("users")
+    assert [column["name"] for column in columns] == ["id", "age", "name"]
+
+    id_column = next(column for column in columns if column["name"] == "id")
+    age_column = next(column for column in columns if column["name"] == "age")
+    assert isinstance(id_column["type"], sa.Integer)
+    assert isinstance(age_column["type"], sa.Integer)
+    assert age_column["nullable"] is False
+    assert inspector.get_pk_constraint("users")["constrained_columns"] == ["id"]
+
+    engine.dispose()
+
+
+def test_e2e_raw_drop_table_removes_metadata(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql("CREATE TABLE users (id INTEGER, name TEXT)")
+
+    with engine.connect() as conn:
+        import excel_dbapi
+
+        raw_conn = conn.connection.dbapi_connection
+        assert excel_dbapi.read_table_metadata(raw_conn, "users") is not None
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql("DROP TABLE users")
+
+    inspector = inspect(engine)
+    assert inspector.has_table("users") is False
+    assert inspector.get_columns("users") == []
+
+    with engine.connect() as conn:
+        import excel_dbapi
+
+        raw_conn = conn.connection.dbapi_connection
+        assert excel_dbapi.read_table_metadata(raw_conn, "users") is None
 
     engine.dispose()
 
@@ -3524,9 +3628,8 @@ def test_e2e_alter_table_add_existing_column_error(tmp_path) -> None:
         )
         conn.commit()
 
-    with engine.connect() as conn:
-        with pytest.raises(exc.ProgrammingError):
-            conn.exec_driver_sql("ALTER TABLE users ADD COLUMN name TEXT")
+    with engine.connect() as conn, pytest.raises(exc.ProgrammingError):
+        conn.exec_driver_sql("ALTER TABLE users ADD COLUMN name TEXT")
 
     engine.dispose()
 
@@ -3547,8 +3650,7 @@ def test_e2e_alter_table_drop_nonexistent_column_error(tmp_path) -> None:
         )
         conn.commit()
 
-    with engine.connect() as conn:
-        with pytest.raises(exc.ProgrammingError):
-            conn.exec_driver_sql("ALTER TABLE users DROP COLUMN missing_col")
+    with engine.connect() as conn, pytest.raises(exc.ProgrammingError):
+        conn.exec_driver_sql("ALTER TABLE users DROP COLUMN missing_col")
 
     engine.dispose()

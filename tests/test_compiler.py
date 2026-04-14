@@ -147,7 +147,9 @@ class TestColumnAliasCompilation:
     def test_aggregate_label(self, excel_engine, users_table):
         from sqlalchemy import func
 
-        stmt = select(func.count(users_table.c.id).label("total")).select_from(users_table)
+        stmt = select(func.count(users_table.c.id).label("total")).select_from(
+            users_table
+        )
         compiled = stmt.compile(dialect=excel_engine.dialect)
         sql = str(compiled)
         assert " AS " in sql
@@ -184,6 +186,7 @@ class TestCompilationRejection:
         assert "ON" in sql
         assert "users.id" in sql
         assert "orders.user_id" in sql
+
     def test_group_by_compiles(self, excel_engine, users_table):
         stmt = select(users_table.c.name).group_by(users_table.c.name)
         compiled = stmt.compile(dialect=excel_engine.dialect)
@@ -213,37 +216,36 @@ class TestCompilationRejection:
         assert "count" in sql.lower()
 
     def test_count_distinct_compiles(self, excel_engine, employees_table):
-        stmt = select(
-            sa.func.count(sa.distinct(employees_table.c.dept))
-        ).select_from(employees_table)
+        stmt = select(sa.func.count(sa.distinct(employees_table.c.dept))).select_from(
+            employees_table
+        )
         compiled = stmt.compile(dialect=excel_engine.dialect)
         sql = str(compiled).lower()
         assert "count(distinct dept)" in sql
 
     def test_sum_distinct_rejected(self, excel_engine, employees_table):
-        stmt = select(
-            sa.func.sum(sa.distinct(employees_table.c.age))
-        ).select_from(employees_table)
+        stmt = select(sa.func.sum(sa.distinct(employees_table.c.age))).select_from(
+            employees_table
+        )
         with pytest.raises(exc.CompileError, match="DISTINCT in sum"):
             stmt.compile(dialect=excel_engine.dialect)
 
     def test_avg_distinct_rejected(self, excel_engine, employees_table):
-        stmt = select(
-            sa.func.avg(sa.distinct(employees_table.c.age))
-        ).select_from(employees_table)
+        stmt = select(sa.func.avg(sa.distinct(employees_table.c.age))).select_from(
+            employees_table
+        )
         with pytest.raises(exc.CompileError, match="DISTINCT in avg"):
             stmt.compile(dialect=excel_engine.dialect)
 
     def test_count_distinct_qualified_rejected(self, excel_engine, employees_table):
         """COUNT(DISTINCT table.col) must be rejected — only bare column names allowed."""
-        # Manually construct a text-based function to simulate qualified arg
-        stmt = sa.text("SELECT count(DISTINCT employees.dept) FROM employees")
         # The compiler rejects qualified refs in DISTINCT at compile time;
         # verify via direct compilation of a crafted function expression
         inner_func = sa.func.count(sa.literal_column("DISTINCT employees.dept"))
         stmt2 = select(inner_func).select_from(employees_table)
         with pytest.raises(exc.CompileError, match="bare column names only"):
             stmt2.compile(dialect=excel_engine.dialect)
+
     def test_aggregate_sum_compiles(self, excel_engine, users_table):
         from sqlalchemy import func
 
@@ -264,9 +266,8 @@ class TestMultiColumnOrderBy:
     """Test multi-column ORDER BY SQL compilation."""
 
     def test_multi_column_order_by(self, excel_engine, users_table):
-        stmt = (
-            select(users_table)
-            .order_by(users_table.c.name.asc(), users_table.c.age.desc())
+        stmt = select(users_table).order_by(
+            users_table.c.name.asc(), users_table.c.age.desc()
         )
         compiled = stmt.compile(dialect=excel_engine.dialect)
         sql = str(compiled)

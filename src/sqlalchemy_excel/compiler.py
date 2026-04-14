@@ -40,7 +40,14 @@ import re
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from sqlalchemy import exc
-from sqlalchemy.sql import coercions, compiler, dml, elements, operators, roles, visitors
+from sqlalchemy.sql import (
+    coercions,
+    compiler,
+    elements,
+    operators,
+    roles,
+    visitors,
+)
 from sqlalchemy.sql.expression import Join
 
 if TYPE_CHECKING:
@@ -114,16 +121,20 @@ class ExcelCompiler(compiler.SQLCompiler):
 
         onclause = join.onclause
         if onclause is None:
-            raise exc.CompileError(
-                "Excel dialect requires an ON clause for JOIN"
-            )
+            raise exc.CompileError("Excel dialect requires an ON clause for JOIN")
 
-        if ExcelCompiler._is_true_onclause(onclause) and not join.full and not join.isouter:
+        if (
+            ExcelCompiler._is_true_onclause(onclause)
+            and not join.full
+            and not join.isouter
+        ):
             return
 
         def _collect_tables(from_clause: Any) -> set[Any]:
             if isinstance(from_clause, Join):
-                return _collect_tables(from_clause.left) | _collect_tables(from_clause.right)
+                return _collect_tables(from_clause.left) | _collect_tables(
+                    from_clause.right
+                )
             return {from_clause}
 
         left_tables = _collect_tables(join.left)
@@ -188,9 +199,7 @@ class ExcelCompiler(compiler.SQLCompiler):
         compound_index: Any,
     ) -> Any:
         self._has_join = False
-        setup_select_stack = cast(
-            "Callable[..., Any]", super()._setup_select_stack
-        )
+        setup_select_stack = cast("Callable[..., Any]", super()._setup_select_stack)
         froms = setup_select_stack(
             select,
             compile_state,
@@ -337,14 +346,18 @@ class ExcelCompiler(compiler.SQLCompiler):
                 )
 
             # Emit the column WITH "AS <label>"
-            return str(
-                label.element._compiler_dispatch(
-                    self,
-                    within_columns_clause=True,
-                    within_label_clause=True,
-                    **kw,
+            return (
+                str(
+                    label.element._compiler_dispatch(
+                        self,
+                        within_columns_clause=True,
+                        within_label_clause=True,
+                        **kw,
+                    )
                 )
-            ) + " AS " + self.preparer.format_label(label, labelname)
+                + " AS "
+                + self.preparer.format_label(label, labelname)
+            )
 
         if render_label_as_label is label:
             if isinstance(label.name, elements._truncated_label):
@@ -414,9 +427,7 @@ class ExcelCompiler(compiler.SQLCompiler):
             return left + " CROSS JOIN " + right
 
         visit_join = cast("Callable[..., str]", super().visit_join)
-        return str(
-            visit_join(join, asfrom=asfrom, from_linter=from_linter, **kwargs)
-        )
+        return str(visit_join(join, asfrom=asfrom, from_linter=from_linter, **kwargs))
 
     def group_by_clause(self, select: Any, **kw: Any) -> str:
         return str(super().group_by_clause(select, **kw))  # type: ignore[no-untyped-call]
@@ -432,12 +443,8 @@ class ExcelCompiler(compiler.SQLCompiler):
         toplevel: bool,
         kwargs: Any,
     ) -> str:
-        if self._has_join:
-            # Reject DISTINCT + JOIN
-            if select._distinct:
-                raise exc.CompileError(
-                    "Excel dialect does not support DISTINCT with JOIN"
-                )
+        if self._has_join and select._distinct:
+            raise exc.CompileError("Excel dialect does not support DISTINCT with JOIN")
         return str(
             super()._compose_select_body(  # type: ignore[no-untyped-call]
                 text,
@@ -484,10 +491,7 @@ class ExcelCompiler(compiler.SQLCompiler):
             )
 
         if self._subquery_depth > 0:
-            raise exc.CompileError(
-                "Excel dialect does not support nested subqueries"
-            )
-
+            raise exc.CompileError("Excel dialect does not support nested subqueries")
 
         inner = getattr(subquery, "element", None)
         if inner is not None:
@@ -507,9 +511,7 @@ class ExcelCompiler(compiler.SQLCompiler):
         finally:
             self._subquery_depth -= 1
 
-    def visit_grouping(
-        self, grouping: Any, asfrom: bool = False, **kwargs: Any
-    ) -> str:
+    def visit_grouping(self, grouping: Any, asfrom: bool = False, **kwargs: Any) -> str:
         element = getattr(grouping, "element", None)
         is_subquery_select = getattr(element, "__visit_name__", None) == "select"
         if is_subquery_select:
@@ -527,7 +529,6 @@ class ExcelCompiler(compiler.SQLCompiler):
                 raise exc.CompileError(
                     "Excel dialect does not support nested subqueries"
                 )
-
 
             assert element is not None  # guaranteed by is_subquery_select check
             # Reject subqueries that themselves contain a JOIN
@@ -558,7 +559,9 @@ class ExcelCompiler(compiler.SQLCompiler):
         **kw: Any,
     ) -> str:
         binary_operator = override_operator or binary.operator
-        in_context = binary_operator is operators.in_op or binary_operator is operators.not_in_op
+        in_context = (
+            binary_operator is operators.in_op or binary_operator is operators.not_in_op
+        )
         visit_binary = cast("Callable[..., str]", super().visit_binary)
         if not in_context:
             return str(
@@ -586,7 +589,6 @@ class ExcelCompiler(compiler.SQLCompiler):
             )
         finally:
             self._in_in_clause = False
-
 
     def returning_clause(
         self,
@@ -630,9 +632,7 @@ class ExcelCompiler(compiler.SQLCompiler):
         return sql
 
     @staticmethod
-    def _update_depth_quote_aware(
-        sql: str, start: int, end: int, depth: int
-    ) -> int:
+    def _update_depth_quote_aware(sql: str, start: int, end: int, depth: int) -> int:
         """Update paren depth between *start* and *end*, skipping quoted strings."""
         in_quote = False
         quote_char = ""
@@ -714,8 +714,7 @@ class ExcelCompiler(compiler.SQLCompiler):
                         )
                         after_pos = i + kw_len
                         after_ok = after_pos >= length or not (
-                            upper[after_pos].isalnum()
-                            or upper[after_pos] == "_"
+                            upper[after_pos].isalnum() or upper[after_pos] == "_"
                         )
                         if before_ok and after_ok:
                             return True
@@ -742,7 +741,7 @@ class ExcelCompiler(compiler.SQLCompiler):
         """
         import re
 
-        _BRANCH_POS_RE = re.compile(
+        branch_pos_re = re.compile(
             r"(?:^|(?:UNION|INTERSECT|EXCEPT|ALL))\s*$",
             re.IGNORECASE,
         )
@@ -796,7 +795,7 @@ class ExcelCompiler(compiler.SQLCompiler):
                 prefix = "".join(result).rstrip()
                 is_branch = (
                     inner.upper().startswith("SELECT")
-                    and _BRANCH_POS_RE.search(prefix) is not None
+                    and branch_pos_re.search(prefix) is not None
                 )
 
                 if is_branch:
@@ -812,9 +811,7 @@ class ExcelCompiler(compiler.SQLCompiler):
                     if ExcelCompiler._has_top_level_limit_offset(inner):
                         result.append("(" + inner + ")")
                     else:
-                        inner = ExcelCompiler._strip_top_level_order_by(
-                            inner
-                        )
+                        inner = ExcelCompiler._strip_top_level_order_by(inner)
                         result.append(inner)
                 else:
                     result.append(sql[i:j])
@@ -853,10 +850,15 @@ class ExcelCompiler(compiler.SQLCompiler):
             if depth == 0:
                 after_order = pos + 5
                 rest = upper[after_order:].lstrip()
-                if rest.startswith("BY"):
-                    if len(rest) <= 2 or not (rest[2].isalnum() or rest[2] == "_"):
-                        if pos == 0 or not (upper[pos - 1].isalnum() or upper[pos - 1] == "_"):
-                            last_top_order = pos
+                if (
+                    rest.startswith("BY")
+                    and (len(rest) <= 2 or not (rest[2].isalnum() or rest[2] == "_"))
+                    and (
+                        pos == 0
+                        or not (upper[pos - 1].isalnum() or upper[pos - 1] == "_")
+                    )
+                ):
+                    last_top_order = pos
             search_start = pos + 5
         if last_top_order is None:
             return sql
@@ -872,21 +874,17 @@ class ExcelCompiler(compiler.SQLCompiler):
                 if ExcelCompiler._is_pos_in_quotes(sql, kp):
                     scan2 = kp + len(keyword)
                     continue
-                od = ExcelCompiler._update_depth_quote_aware(
-                    sql, scan2, kp, od
-                )
-                if od == 0:
-                    if kp == 0 or not (
-                        upper[kp - 1].isalnum() or upper[kp - 1] == "_"
+                od = ExcelCompiler._update_depth_quote_aware(sql, scan2, kp, od)
+                if od == 0 and (
+                    kp == 0 or not (upper[kp - 1].isalnum() or upper[kp - 1] == "_")
+                ):
+                    after_kw = kp + len(keyword)
+                    if after_kw >= len(upper) or not (
+                        upper[after_kw].isalnum() or upper[after_kw] == "_"
                     ):
-                        after_kw = kp + len(keyword)
-                        if after_kw >= len(upper) or not (
-                            upper[after_kw].isalnum()
-                            or upper[after_kw] == "_"
-                        ):
-                            if kp < order_end:
-                                order_end = kp
-                            break
+                        if kp < order_end:
+                            order_end = kp
+                        break
                 scan2 = kp + len(keyword)
 
         before = sql[:last_top_order].rstrip()
@@ -909,31 +907,29 @@ class ExcelCompiler(compiler.SQLCompiler):
                 if ExcelCompiler._is_pos_in_quotes(sql, kp):
                     scan = kp + len(keyword)
                     continue
-                depth = ExcelCompiler._update_depth_quote_aware(
-                    sql, scan, kp, depth
-                )
-                if depth == 0:
-                    if kp == 0 or not (
-                        upper[kp - 1].isalnum() or upper[kp - 1] == "_"
+                depth = ExcelCompiler._update_depth_quote_aware(sql, scan, kp, depth)
+                if depth == 0 and (
+                    kp == 0 or not (upper[kp - 1].isalnum() or upper[kp - 1] == "_")
+                ):
+                    after_kw = kp + len(keyword)
+                    if after_kw >= len(upper) or not (
+                        upper[after_kw].isalnum() or upper[after_kw] == "_"
                     ):
-                        after_kw = kp + len(keyword)
-                        if after_kw >= len(upper) or not (
-                            upper[after_kw].isalnum()
-                            or upper[after_kw] == "_"
-                        ):
-                            return True
+                        return True
                 scan = kp + len(keyword)
         return False
 
     def _on_conflict_target(self, clause: Any, **kw: Any) -> str:
         if clause.inferred_target_elements is not None:
-            target_text = "(%s)" % ", ".join(
-                (
-                    self.preparer.quote(c)
-                    if isinstance(c, str)
-                    else self.process(c, include_table=False, use_schema=False)
+            target_text = "({})".format(
+                ", ".join(
+                    (
+                        self.preparer.quote(c)
+                        if isinstance(c, str)
+                        else self.process(c, include_table=False, use_schema=False)
+                    )
+                    for c in clause.inferred_target_elements
                 )
-                for c in clause.inferred_target_elements
             )
         else:
             target_text = ""
@@ -944,7 +940,7 @@ class ExcelCompiler(compiler.SQLCompiler):
         target_text = self._on_conflict_target(on_conflict, **kw)
 
         if target_text:
-            return "ON CONFLICT %s DO NOTHING" % target_text
+            return f"ON CONFLICT {target_text} DO NOTHING"
         else:
             return "ON CONFLICT DO NOTHING"
 
@@ -957,7 +953,7 @@ class ExcelCompiler(compiler.SQLCompiler):
 
         set_parameters = dict(clause.update_values_to_set)
 
-        insert_statement = cast(Any, self.stack[-1]["selectable"])
+        insert_statement = cast("Any", self.stack[-1]["selectable"])
         cols = insert_statement.table.c
         set_kw = dict(kw)
         set_kw.update(include_table=False, use_schema=False)
@@ -985,7 +981,7 @@ class ExcelCompiler(compiler.SQLCompiler):
             )
 
             key_text = self.preparer.quote(c.name)
-            action_set_ops.append("%s = %s" % (key_text, value_text))
+            action_set_ops.append(f"{key_text} = {value_text}")
 
         if set_parameters:
             from sqlalchemy import util as sa_util
@@ -996,21 +992,20 @@ class ExcelCompiler(compiler.SQLCompiler):
             # Reject foreign-table Column keys that would silently
             # retarget the assignment to the INSERT table
             for k in list(set_parameters):
-                if hasattr(k, "table") and hasattr(k.table, "name"):
-                    if k.table.name != insert_table_name:
-                        raise exc.CompileError(
-                            "Column '%s' from table '%s' cannot be used as "
-                            "an ON CONFLICT DO UPDATE SET target for table '%s'"
-                            % (k.key, k.table.name, insert_table_name)
-                        )
+                if (
+                    hasattr(k, "table")
+                    and hasattr(k.table, "name")
+                    and k.table.name != insert_table_name
+                ):
+                    raise exc.CompileError(
+                        f"Column '{k.key}' from table '{k.table.name}' cannot be used as "
+                        f"an ON CONFLICT DO UPDATE SET target for table '{insert_table_name}'"
+                    )
 
+            additional_columns = ", ".join(f"'{column}'" for column in set_parameters)
             sa_util.warn(
-                "Additional column names not matching "
-                "any column keys in table '%s': %s"
-                % (
-                    insert_table_name,
-                    (", ".join("'%s'" % c for c in set_parameters)),
-                )
+                "Additional column names not matching any column keys in "
+                f"table '{insert_table_name}': {additional_columns}"
             )
             for k, v in set_parameters.items():
                 key_text = (
@@ -1023,26 +1018,22 @@ class ExcelCompiler(compiler.SQLCompiler):
                     is_upsert_set=True,
                     **set_kw,
                 )
-                action_set_ops.append("%s = %s" % (key_text, value_text))
+                action_set_ops.append(f"{key_text} = {value_text}")
 
         action_text = ", ".join(action_set_ops)
 
-        return "ON CONFLICT %s DO UPDATE SET %s" % (target_text, action_text)
+        return f"ON CONFLICT {target_text} DO UPDATE SET {action_text}"
 
     def visit_over(
         self,
         over: Any,
         **kwargs: Any,
     ) -> str:
-        raise exc.CompileError(
-            "Excel dialect does not support window functions (OVER)"
-        )
+        raise exc.CompileError("Excel dialect does not support window functions (OVER)")
 
     def visit_funcfilter(
         self,
         funcfilter: Any,
         **kwargs: Any,
     ) -> Any:
-        raise exc.CompileError(
-            "Excel dialect does not support aggregate FILTER clause"
-        )
+        raise exc.CompileError("Excel dialect does not support aggregate FILTER clause")

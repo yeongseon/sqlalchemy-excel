@@ -43,7 +43,9 @@ def populated_engine(engine, metadata, items_table, composite_items_table):
 class TestUpsertDoNothing:
     def test_conflict_skipped(self, populated_engine, items_table):
         with populated_engine.begin() as conn:
-            conn.execute(insert(items_table).values(id=1, name="Alice", age=30, code="A"))
+            conn.execute(
+                insert(items_table).values(id=1, name="Alice", age=30, code="A")
+            )
 
         with populated_engine.begin() as conn:
             stmt = insert(items_table).values(id=1, name="New", age=40, code="B")
@@ -55,7 +57,9 @@ class TestUpsertDoNothing:
 
     def test_no_conflict_inserts(self, populated_engine, items_table):
         with populated_engine.begin() as conn:
-            conn.execute(insert(items_table).values(id=1, name="Alice", age=30, code="A"))
+            conn.execute(
+                insert(items_table).values(id=1, name="Alice", age=30, code="A")
+            )
 
         with populated_engine.begin() as conn:
             stmt = insert(items_table).values(id=2, name="Bob", age=25, code="B")
@@ -67,7 +71,10 @@ class TestUpsertDoNothing:
 
     def test_multi_row_mixed(self, populated_engine, items_table):
         with populated_engine.begin() as conn:
-            conn.execute(insert(items_table), [{"id": 1, "name": "Alice", "age": 30, "code": "A"}])
+            conn.execute(
+                insert(items_table),
+                [{"id": 1, "name": "Alice", "age": 30, "code": "A"}],
+            )
 
         with populated_engine.begin() as conn:
             stmt = insert(items_table).on_conflict_do_nothing(index_elements=["id"])
@@ -92,7 +99,9 @@ class TestUpsertDoNothing:
 class TestUpsertDoUpdate:
     def test_literal_set(self, populated_engine, items_table):
         with populated_engine.begin() as conn:
-            conn.execute(insert(items_table).values(id=1, name="Alice", age=30, code="A"))
+            conn.execute(
+                insert(items_table).values(id=1, name="Alice", age=30, code="A")
+            )
 
         with populated_engine.begin() as conn:
             stmt = insert(items_table).values(id=1, name="New", age=99, code="B")
@@ -109,7 +118,9 @@ class TestUpsertDoUpdate:
 
     def test_excluded_reference(self, populated_engine, items_table):
         with populated_engine.begin() as conn:
-            conn.execute(insert(items_table).values(id=1, name="Alice", age=30, code="A"))
+            conn.execute(
+                insert(items_table).values(id=1, name="Alice", age=30, code="A")
+            )
 
         with populated_engine.begin() as conn:
             stmt = insert(items_table).values(id=1, name="Renamed", age=31, code="A")
@@ -126,14 +137,18 @@ class TestUpsertDoUpdate:
 
     def test_expression_set_value(self, populated_engine, items_table):
         with populated_engine.begin() as conn:
-            conn.execute(insert(items_table).values(id=1, name="Alice", age=30, code="A"))
+            conn.execute(
+                insert(items_table).values(id=1, name="Alice", age=30, code="A")
+            )
 
         stmt = insert(items_table).values(id=1, name="New", age=99, code="B")
         upsert_stmt = stmt.on_conflict_do_update(
             index_elements=["id"],
             set_={"age": items_table.c.age + 1},
         )
-        compiled = " ".join(str(upsert_stmt.compile(dialect=populated_engine.dialect)).split())
+        compiled = " ".join(
+            str(upsert_stmt.compile(dialect=populated_engine.dialect)).split()
+        )
         assert "items.age" not in compiled
         assert " SET age = (age + " in compiled
 
@@ -149,14 +164,20 @@ class TestUpsertDoUpdate:
             index_elements=["id"],
             set_=items_table.c,
         )
-        compiled = " ".join(str(upsert_stmt.compile(dialect=populated_engine.dialect)).split())
+        compiled = " ".join(
+            str(upsert_stmt.compile(dialect=populated_engine.dialect)).split()
+        )
         assert "items." not in compiled
         assert " SET id = id, name = name, age = age, code = code" in compiled
 
-    def test_multi_column_conflict_target(self, populated_engine, composite_items_table):
+    def test_multi_column_conflict_target(
+        self, populated_engine, composite_items_table
+    ):
         with populated_engine.begin() as conn:
             conn.execute(
-                insert(composite_items_table).values(id=1, code="A", name="Alice", age=30)
+                insert(composite_items_table).values(
+                    id=1, code="A", name="Alice", age=30
+                )
             )
 
         with populated_engine.begin() as conn:
@@ -278,6 +299,7 @@ def test_foreign_table_column_key_rejected(items_table, composite_items_table):
         set_={composite_items_table.c.age: 99},
     )
     from sqlalchemy.exc import CompileError
+
     from sqlalchemy_excel.dialect import ExcelDialect
 
     with pytest.raises(CompileError, match="cannot be used as an ON CONFLICT"):
