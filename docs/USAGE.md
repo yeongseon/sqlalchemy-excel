@@ -201,8 +201,9 @@ cross_join = select(users.c.id, orders.c.id).select_from(users.join(orders, true
 import sqlalchemy as sa
 from sqlalchemy import select
 
+# Assumes `users` and `teams` tables are defined in metadata
 left = select(users.c.id, users.c.name)
-right = select(admins.c.id, admins.c.name)
+right = select(teams.c.id, teams.c.name)
 
 # Deduplicated union
 stmt_union = sa.union(left, right)

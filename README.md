@@ -11,7 +11,7 @@
 [![Docs](https://img.shields.io/badge/docs-GitHub-blue.svg)](https://github.com/yeongseon/sqlalchemy-excel/tree/main/docs)
 
 SQLAlchemy dialect for Excel files — use Excel worksheets as database tables.
-This dialect supports CRUD, ORM mapping, aggregations, and constrained JOINs.
+This dialect supports CRUD, basic ORM mapping, aggregations, and constrained JOINs.
 
 Current release: `0.5.4` (requires `excel-dbapi>=0.4.1,<1.0`).
 See `docs/COMPATIBILITY.md` for version pairing and migration guidance.
@@ -27,7 +27,7 @@ Before writing any code, understand the dialect's capabilities and limits:
 | Multi-row INSERT VALUES | ✅ |
 | INSERT ... SELECT (`from_select`) | ✅ |
 | CREATE TABLE / DROP TABLE | ✅ |
-| ORM with DeclarativeBase | ✅ |
+| ORM with DeclarativeBase | ✅ (basic CRUD; lazy relationship loading is limited) |
 | Schema inspection (tables, columns) | ✅ |
 | IN, BETWEEN, LIKE operators | ✅ |
 | DISTINCT | ✅ |
@@ -45,6 +45,8 @@ Before writing any code, understand the dialect's capabilities and limits:
 | **Foreign keys / indexes** | ❌ |
 | **Concurrent writes** | ❌ |
 | **Session.rollback()** | Partial (openpyxl with autocommit=False; graph: no-op) |
+
+**Identifier restrictions**: Table and column names must match `[A-Za-z_][A-Za-z0-9_]*`. Names with spaces, hyphens, or Unicode characters are not supported.
 
 If you need any of the ❌ features, use SQLite, PostgreSQL, or another full-featured database.
 
@@ -272,7 +274,7 @@ pip install sqlalchemy-excel[graph]
 ```
 
 ```python
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from azure.identity import DefaultAzureCredential
 
 engine = create_engine(

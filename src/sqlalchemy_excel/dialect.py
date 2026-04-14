@@ -272,11 +272,17 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
         nullable_map = {col["name"]: col.get("nullable", True) for col in current_meta}
         pk_map = {col["name"]: col.get("primary_key", False) for col in current_meta}
 
-        if operation == "ADD" and len(tokens) == 7 and tokens[4].upper() == "COLUMN":
+        if operation == "ADD" and len(tokens) >= 7 and tokens[4].upper() == "COLUMN":
+            col_name = tokens[5].strip('"')
             added_type = tokens[6].upper()
             if added_type == "FLOAT":
                 added_type = "REAL"
-            type_map[tokens[5].strip('"')] = added_type
+            type_map[col_name] = added_type
+            # Preserve nullable/PK hints from trailing constraints:
+            # ALTER TABLE t ADD COLUMN c TYPE NOT NULL PRIMARY KEY
+            tail = " ".join(t.upper() for t in tokens[7:])
+            nullable_map[col_name] = "NOT NULL" not in tail
+            pk_map[col_name] = "PRIMARY KEY" in tail or "PRIMARY_KEY" in tail
 
         if operation == "DROP" and len(tokens) == 6 and tokens[4].upper() == "COLUMN":
             removed = tokens[5].strip('"')
