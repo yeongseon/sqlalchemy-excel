@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from sqlalchemy import create_engine, inspect, text
+import pytest
+from sqlalchemy import create_engine, exc, inspect, text
 
 
 def _engine_for(tmp_path):
@@ -63,11 +64,10 @@ def test_reflection_cleans_stale_metadata_when_sheet_is_missing(tmp_path) -> Non
         assert excel_dbapi.read_table_metadata(raw_conn, "ghost") is not None
 
     inspector = inspect(engine)
-    assert inspector.get_columns("ghost") == []
-    assert inspector.get_pk_constraint("ghost") == {
-        "constrained_columns": [],
-        "name": None,
-    }
+    with pytest.raises(exc.NoSuchTableError):
+        inspector.get_columns("ghost")
+    with pytest.raises(exc.NoSuchTableError):
+        inspector.get_pk_constraint("ghost")
 
     with engine.connect() as conn:
         import excel_dbapi

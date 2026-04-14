@@ -91,6 +91,22 @@ class TestConnectArgs:
         assert kwargs["file_path"] == "folder name/test file.xlsx"
         engine.dispose()
 
+    def test_connect_args_forwards_data_only_query_param(self):
+        engine = create_engine("excel:///placeholder.xlsx")
+        dialect = engine.dialect
+        url = make_url("excel:///placeholder.xlsx?data_only=false")
+        _, kwargs = dialect.create_connect_args(url)
+        assert kwargs["data_only"] is False
+        engine.dispose()
+
+    def test_connect_args_forwards_create_query_param(self):
+        engine = create_engine("excel:///placeholder.xlsx")
+        dialect = engine.dialect
+        url = make_url("excel:///placeholder.xlsx?create=false")
+        _, kwargs = dialect.create_connect_args(url)
+        assert kwargs["create"] is False
+        engine.dispose()
+
 
 class TestConnection:
     """Test basic connection operations."""

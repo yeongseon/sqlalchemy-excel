@@ -3502,6 +3502,23 @@ def test_e2e_raw_create_table_numeric_aliases_reflect_as_float(tmp_path) -> None
     engine.dispose()
 
 
+def test_e2e_raw_create_table_integer_and_timestamp_aliases_reflect_correctly(
+    tmp_path,
+) -> None:
+    engine = _engine_for(tmp_path)
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql("CREATE TABLE t (a SMALLINT, ts TIMESTAMP, b BIGINT)")
+
+    inspector = inspect(engine)
+    columns = {column["name"]: column["type"] for column in inspector.get_columns("t")}
+    assert isinstance(columns["a"], sa.Integer)
+    assert isinstance(columns["b"], sa.Integer)
+    assert isinstance(columns["ts"], sa.DateTime)
+
+    engine.dispose()
+
+
 def test_e2e_raw_drop_table_removes_metadata(tmp_path) -> None:
     engine = _engine_for(tmp_path)
 
@@ -3519,7 +3536,8 @@ def test_e2e_raw_drop_table_removes_metadata(tmp_path) -> None:
 
     inspector = inspect(engine)
     assert inspector.has_table("users") is False
-    assert inspector.get_columns("users") == []
+    with pytest.raises(exc.NoSuchTableError):
+        inspector.get_columns("users")
 
     with engine.connect() as conn:
         import excel_dbapi

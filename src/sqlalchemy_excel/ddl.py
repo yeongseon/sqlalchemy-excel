@@ -54,6 +54,19 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
                     )
                     seen_check.add(check_key)
 
+    @staticmethod
+    def _warn_unsupported_generated_columns(column: Any) -> None:
+        if getattr(column, "computed", None) is not None:
+            warnings.warn(
+                f"Column '{column.name}': Computed columns are not supported by excel dialect; the expression will be ignored",
+                stacklevel=2,
+            )
+        if getattr(column, "identity", None) is not None:
+            warnings.warn(
+                f"Column '{column.name}': Identity columns are not supported by excel dialect; auto-increment will not be applied",
+                stacklevel=2,
+            )
+
     def _format_alter_table_name(self, operation: Any) -> str:
         schema = getattr(operation, "schema", None)
         if schema is not None:
@@ -104,6 +117,7 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
                 seen_unique=seen_unique,
                 seen_check=seen_check,
             )
+            self._warn_unsupported_generated_columns(col)
             suffix = f" {' '.join(constraints)}" if constraints else ""
             columns.append(f"{col_name} {col_type}{suffix}")
 
@@ -155,6 +169,7 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
             seen_unique=set(),
             seen_check=set(),
         )
+        self._warn_unsupported_generated_columns(column)
         suffix = f" {' '.join(constraints)}" if constraints else ""
         return f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}{suffix}"
 

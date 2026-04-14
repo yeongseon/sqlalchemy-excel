@@ -9,10 +9,13 @@ from __future__ import annotations
 from typing import Any, cast
 
 from sqlalchemy import types as sa_types
+from sqlalchemy.exc import NoSuchTableError
 
 _TYPE_MAP: dict[str, type[sa_types.TypeEngine[Any]]] = {
     "TEXT": sa_types.String,
     "INTEGER": sa_types.Integer,
+    "SMALLINT": sa_types.Integer,
+    "BIGINT": sa_types.Integer,
     "FLOAT": sa_types.Float,
     "REAL": sa_types.Float,
     "DECIMAL": sa_types.Float,
@@ -22,6 +25,7 @@ _TYPE_MAP: dict[str, type[sa_types.TypeEngine[Any]]] = {
     "BOOLEAN": sa_types.Boolean,
     "DATE": sa_types.Date,
     "DATETIME": sa_types.DateTime,
+    "TIMESTAMP": sa_types.DateTime,
 }
 
 
@@ -83,7 +87,7 @@ class ExcelInspectionMixin:
             meta = None
 
         if not table_exists:
-            return []
+            raise NoSuchTableError(table_name)
 
         if meta is not None:
             return [
@@ -130,7 +134,7 @@ class ExcelInspectionMixin:
             meta = None
 
         if not table_exists:
-            return {"constrained_columns": [], "name": None}
+            raise NoSuchTableError(table_name)
 
         if meta is not None:
             pk_cols = [col["name"] for col in meta if col.get("primary_key", False)]

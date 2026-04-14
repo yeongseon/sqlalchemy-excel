@@ -88,6 +88,9 @@ with Session(engine) as session:
     users = session.query(User).all()
 ```
 
+> **Note (development mode):** When using from source checkout (not pip-installed),
+> add `import sqlalchemy_excel` before `create_engine()` to register the dialect.
+
 ## URL Format
 
 ```python
@@ -249,7 +252,7 @@ with engine.connect() as conn:
 
 Reflection verifies that worksheets still exist before trusting metadata.
 If metadata remains for a deleted worksheet, sqlalchemy-excel removes the stale
-entry and returns an empty inspection result for that table name.
+entry and raises `NoSuchTableError` for that table name.
 
 Raw DDL executed through `text()` or `exec_driver_sql()` keeps metadata in sync
 for `CREATE TABLE`, `ALTER TABLE`, and `DROP TABLE`.
@@ -300,6 +303,9 @@ with engine.connect() as conn:
     for row in result:
         print(row)
 ```
+
+> **Note (development mode):** When using from source checkout (not pip-installed),
+> add `import sqlalchemy_excel` before `create_engine()` to register the dialect.
 
 URL format: `excel+graph:///drive_id/item_id` where `drive_id` and `item_id` are Microsoft Graph resource identifiers.
 Query parameters: `?readonly=false` to enable write operations.

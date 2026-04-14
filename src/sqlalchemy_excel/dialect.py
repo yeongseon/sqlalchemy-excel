@@ -43,6 +43,16 @@ def _after_create(
                 "Excel dialect does not support autoincrement=True; value must be set explicitly",
                 stacklevel=2,
             )
+        if getattr(col, "computed", None) is not None:
+            warnings.warn(
+                f"Column '{col.name}': Computed columns are not supported by excel dialect; the expression will be ignored",
+                stacklevel=2,
+            )
+        if getattr(col, "identity", None) is not None:
+            warnings.warn(
+                f"Column '{col.name}': Identity columns are not supported by excel dialect; auto-increment will not be applied",
+                stacklevel=2,
+            )
 
     import excel_dbapi
 
@@ -172,9 +182,18 @@ def _driver_type_from_declared(type_expr: str) -> str:
     token = match.group(1) if match is not None else "TEXT"
     if token in {"FLOAT", "REAL", "DECIMAL", "NUMERIC", "DOUBLE"}:
         return "FLOAT"
+    if token in {"SMALLINT", "BIGINT"}:
+        return "INTEGER"
+    if token == "TIMESTAMP":
+        return "DATETIME"
     if token in {"INTEGER", "BOOLEAN", "DATE", "DATETIME", "TEXT"}:
         return token
     return "TEXT"
+
+
+def _coerce_bool_query_value(raw: Any) -> bool:
+    value = raw[0] if isinstance(raw, tuple) else raw
+    return str(value).lower() in ("true", "1", "yes")
 
 
 def _parse_alter_add_column(statement: str) -> tuple[str, str, str] | None:
@@ -325,21 +344,15 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
             "create": True,
         }
 
-        # Forward query parameters
         query = dict(url.query)
         if "engine" in query:
             kwargs["engine"] = query.pop("engine")
         if "autocommit" in query:
-            autocommit = query.pop("autocommit")
-            if isinstance(autocommit, tuple):
-                autocommit_text = autocommit[0] if autocommit else ""
-            else:
-                autocommit_text = autocommit
-            kwargs["autocommit"] = autocommit_text.lower() in (
-                "true",
-                "1",
-                "yes",
-            )
+            kwargs["autocommit"] = _coerce_bool_query_value(query.pop("autocommit"))
+
+        for key in ("data_only", "sanitize_formulas", "create", "file_locking"):
+            if key in query:
+                kwargs[key] = _coerce_bool_query_value(query[key])
 
         return ([], kwargs)
 
@@ -430,6 +443,10 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
     @staticmethod
     def _normalize_metadata_type_name(type_name: str) -> str:
         normalized = type_name.upper()
+        if normalized in {"SMALLINT", "BIGINT"}:
+            return "INTEGER"
+        if normalized == "TIMESTAMP":
+            return "DATETIME"
         if normalized in {
             "FLOAT",
             "REAL",
@@ -736,8 +753,6 @@ class ExcelGraphDialect(ExcelDialect):  # type: ignore[misc,unused-ignore]
 
         query = dict(url.query)
         if "readonly" in query:
-            raw = query.pop("readonly")
-            val = raw[0] if isinstance(raw, tuple) else raw
-            kwargs["readonly"] = str(val).lower() in ("true", "1", "yes")
+            kwargs["readonly"] = _coerce_bool_query_value(query.pop("readonly"))
 
         return ([], kwargs)
