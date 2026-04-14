@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from sqlalchemy import Column, Integer, MetaData, String, Table, inspect
 from sqlalchemy.sql.ddl import ExecutableDDLElement
 
@@ -75,10 +76,7 @@ def test_alter_table_add_column_with_constraints_reflection_round_trip(engine) -
         Column("external_id", Integer, nullable=False, primary_key=True),
     )
     compiled = str(ddl.compile(dialect=engine.dialect)).strip()
-    assert (
-        compiled
-        == "ALTER TABLE users ADD COLUMN external_id INTEGER NOT NULL PRIMARY KEY"
-    )
+    assert compiled == "ALTER TABLE users ADD COLUMN external_id INTEGER PRIMARY KEY"
 
     with engine.begin() as conn:
         conn.execute(ddl)
@@ -88,6 +86,15 @@ def test_alter_table_add_column_with_constraints_reflection_round_trip(engine) -
     external_id = next(col for col in columns if col["name"] == "external_id")
     assert external_id["nullable"] is False
     assert "external_id" in inspector.get_pk_constraint("users")["constrained_columns"]
+
+
+def test_alter_table_add_column_warns_for_unsupported_unique(engine) -> None:
+    ddl = AddColumn("users", Column("email", String, unique=True))
+
+    with pytest.warns(UserWarning, match="UNIQUE"):
+        compiled = str(ddl.compile(dialect=engine.dialect)).strip()
+
+    assert compiled == "ALTER TABLE users ADD COLUMN email TEXT"
 
 
 def test_alter_table_drop_column(engine) -> None:

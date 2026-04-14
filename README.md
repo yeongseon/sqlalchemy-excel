@@ -44,7 +44,7 @@ Before writing any code, understand the dialect's capabilities and limits:
 | **ALTER TABLE** | ✅ (ADD/DROP/RENAME COLUMN) |
 | Raw DDL metadata sync (`text()` / `exec_driver_sql()`) | ✅ (`CREATE TABLE` / `ALTER TABLE` / `DROP TABLE`) |
 | **Foreign keys / indexes** | ❌ |
-| **UNIQUE / CHECK enforcement** | ❌ (accepted for compatibility; warnings are emitted) |
+| **UNIQUE / CHECK enforcement** | ❌ (accepted for compatibility; compile-time warnings are emitted for CREATE TABLE and ALTER TABLE ADD COLUMN) |
 | **Concurrent writes** | ❌ |
 | **Session.rollback()** | Partial (openpyxl with autocommit=False; graph: no-op) |
 
@@ -252,8 +252,11 @@ If metadata remains for a deleted worksheet, sqlalchemy-excel removes the stale
 entry and returns an empty inspection result for that table name.
 
 Raw DDL executed through `text()` or `exec_driver_sql()` keeps metadata in sync
-for `CREATE TABLE`, `ALTER TABLE`, and `DROP TABLE`, so declared types
-round-trip through reflection.
+for `CREATE TABLE`, `ALTER TABLE`, and `DROP TABLE`.
+
+- Primary keys declared inline or as table-level composite constraints are reflected.
+- Numeric declarations `FLOAT`, `REAL`, `DECIMAL`, `NUMERIC`, `DOUBLE`, and
+  `DOUBLE PRECISION` are reflected as SQLAlchemy `Float`.
 
 ```python
 from sqlalchemy import create_engine, inspect

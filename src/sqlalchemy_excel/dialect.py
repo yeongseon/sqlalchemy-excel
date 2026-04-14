@@ -129,7 +129,79 @@ def _normalize_statement_whitespace_quote_aware(statement: str) -> str:
     return "".join(out).strip()
 
 
+def _split_sql_list_quote_aware(sql: str) -> list[str]:
+    items: list[str] = []
+    start = 0
+    depth = 0
+    in_quote = False
+    i = 0
+    while i < len(sql):
+        ch = sql[i]
+        if in_quote:
+            if ch == '"':
+                if i + 1 < len(sql) and sql[i + 1] == '"':
+                    i += 2
+                    continue
+                in_quote = False
+            i += 1
+            continue
+
+        if ch == '"':
+            in_quote = True
+        elif ch == "(":
+            depth += 1
+        elif ch == ")" and depth > 0:
+            depth -= 1
+        elif ch == "," and depth == 0:
+            items.append(sql[start:i].strip())
+            start = i + 1
+        i += 1
+
+    tail = sql[start:].strip()
+    if tail:
+        items.append(tail)
+    return items
+
+
+def _driver_type_from_declared(type_expr: str) -> str:
+    upper = type_expr.upper().strip()
+    if upper.startswith("DOUBLE PRECISION"):
+        return "FLOAT"
+
+    match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)", upper)
+    token = match.group(1) if match is not None else "TEXT"
+    if token in {"FLOAT", "REAL", "DECIMAL", "NUMERIC", "DOUBLE"}:
+        return "FLOAT"
+    if token in {"INTEGER", "BOOLEAN", "DATE", "DATETIME", "TEXT"}:
+        return token
+    return "TEXT"
+
+
 def _statement_for_driver_execution(statement: str) -> str:
+    create_match = re.match(
+        r'^CREATE TABLE\s+("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*;?$',
+        statement,
+        re.IGNORECASE,
+    )
+    if create_match is not None:
+        table_name = create_match.group(1)
+        column_block = create_match.group(2)
+        simplified: list[str] = []
+        for part in _split_sql_list_quote_aware(column_block):
+            upper_part = part.upper()
+            if upper_part.startswith(
+                ("PRIMARY KEY", "UNIQUE", "CHECK", "CONSTRAINT", "FOREIGN KEY")
+            ):
+                continue
+            col_match = re.match(r'^("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s+(.+)$', part)
+            if col_match is None:
+                continue
+            col_name = col_match.group(1)
+            col_type = _driver_type_from_declared(col_match.group(2))
+            simplified.append(f"{col_name} {col_type}")
+        if simplified:
+            return f"CREATE TABLE {table_name} ({', '.join(simplified)})"
+
     if not statement.upper().startswith("ALTER TABLE "):
         return statement
 
@@ -280,37 +352,38 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
 
     @staticmethod
     def _split_sql_list(sql: str) -> list[str]:
-        items: list[str] = []
-        start = 0
-        depth = 0
-        in_quote = False
-        i = 0
-        while i < len(sql):
-            ch = sql[i]
-            if in_quote:
-                if ch == '"':
-                    if i + 1 < len(sql) and sql[i + 1] == '"':
-                        i += 2
-                        continue
-                    in_quote = False
-                i += 1
-                continue
+        return _split_sql_list_quote_aware(sql)
 
-            if ch == '"':
-                in_quote = True
-            elif ch == "(":
-                depth += 1
-            elif ch == ")" and depth > 0:
-                depth -= 1
-            elif ch == "," and depth == 0:
-                items.append(sql[start:i].strip())
-                start = i + 1
-            i += 1
+    @staticmethod
+    def _extract_declared_type_name(type_expr: str) -> str | None:
+        stripped = type_expr.strip()
+        if not stripped:
+            return None
 
-        tail = sql[start:].strip()
-        if tail:
-            items.append(tail)
-        return items
+        if re.match(r"^DOUBLE\s+PRECISION\b", stripped, re.IGNORECASE):
+            return "DOUBLE PRECISION"
+
+        match = re.match(
+            r"^([A-Za-z_][A-Za-z0-9_]*)(?:\s*\([^)]*\))?",
+            stripped,
+        )
+        if match is None:
+            return None
+        return match.group(1).upper()
+
+    @staticmethod
+    def _normalize_metadata_type_name(type_name: str) -> str:
+        normalized = type_name.upper()
+        if normalized in {
+            "FLOAT",
+            "REAL",
+            "DECIMAL",
+            "NUMERIC",
+            "DOUBLE",
+            "DOUBLE PRECISION",
+        }:
+            return "REAL"
+        return normalized
 
     def _sync_create_table_metadata(self, cursor: Any, statement: str) -> None:
         match = re.match(
@@ -329,11 +402,17 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
             return
 
         columns: list[dict[str, Any]] = []
+        table_pk_columns: set[str] = set()
         for part in self._split_sql_list(column_block):
             upper_part = part.upper()
+            if upper_part.startswith("PRIMARY KEY"):
+                pk_match = re.match(r"^PRIMARY KEY\s*\((.+)\)\s*$", part, re.IGNORECASE)
+                if pk_match is not None:
+                    for name in self._split_sql_list(pk_match.group(1)):
+                        table_pk_columns.add(self._unquote_identifier(name.strip()))
+                continue
             if upper_part.startswith(
                 (
-                    "PRIMARY KEY",
                     "UNIQUE",
                     "CHECK",
                     "CONSTRAINT",
@@ -352,25 +431,27 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
             col_name = self._unquote_identifier(col_match.group(1))
             remainder = col_match.group(2)
             remainder_upper = remainder.upper()
-            type_match = re.match(
-                r"^([^\s]+(?:\([^)]*\))?)",
-                remainder,
-            )
-            if type_match is None:
+            extracted = self._extract_declared_type_name(remainder)
+            if extracted is None:
                 continue
 
-            type_name = type_match.group(1).upper()
-            if type_name == "FLOAT":
-                type_name = "REAL"
+            type_name = self._normalize_metadata_type_name(extracted)
 
+            primary_key = "PRIMARY KEY" in remainder_upper
             columns.append(
                 {
                     "name": col_name,
                     "type_name": type_name,
-                    "nullable": "NOT NULL" not in remainder_upper,
-                    "primary_key": "PRIMARY KEY" in remainder_upper,
+                    "nullable": "NOT NULL" not in remainder_upper and not primary_key,
+                    "primary_key": primary_key,
                 }
             )
+
+        if table_pk_columns:
+            for column in columns:
+                if column["name"] in table_pk_columns:
+                    column["primary_key"] = True
+                    column["nullable"] = False
 
         if not columns:
             return
@@ -415,15 +496,16 @@ class ExcelDialect(  # type: ignore[misc]  # pyright: ignore[reportIncompatibleM
 
         if operation == "ADD" and len(tokens) >= 7 and tokens[4].upper() == "COLUMN":
             col_name = tokens[5].strip('"')
-            added_type = tokens[6].upper()
-            if added_type == "FLOAT":
-                added_type = "REAL"
+            remainder = " ".join(tokens[6:])
+            extracted = self._extract_declared_type_name(remainder)
+            added_type = self._normalize_metadata_type_name(extracted or "TEXT")
             type_map[col_name] = added_type
             # Preserve nullable/PK hints from trailing constraints:
             # ALTER TABLE t ADD COLUMN c TYPE NOT NULL PRIMARY KEY
-            tail = " ".join(t.upper() for t in tokens[7:])
-            nullable_map[col_name] = "NOT NULL" not in tail
-            pk_map[col_name] = "PRIMARY KEY" in tail or "PRIMARY_KEY" in tail
+            tail = remainder.upper()
+            is_pk = "PRIMARY KEY" in tail or "PRIMARY_KEY" in tail
+            nullable_map[col_name] = "NOT NULL" not in tail and not is_pk
+            pk_map[col_name] = is_pk
 
         if operation == "DROP" and len(tokens) == 6 and tokens[4].upper() == "COLUMN":
             removed = tokens[5].strip('"')

@@ -57,6 +57,18 @@ class TestDDLCompilation:
         sql = str(CreateTable(accounts).compile(dialect=engine.dialect)).strip()
         assert "email TEXT NOT NULL" in sql
 
+    def test_create_table_sql_emits_table_level_primary_key_for_composite(
+        self, engine, metadata
+    ):
+        memberships = Table(
+            "memberships",
+            metadata,
+            Column("user_id", Integer, primary_key=True),
+            Column("group_id", Integer, primary_key=True),
+        )
+        sql = str(CreateTable(memberships).compile(dialect=engine.dialect)).strip()
+        assert "PRIMARY KEY (user_id, group_id)" in sql
+
     def test_create_table_warns_for_unsupported_unique_and_check(
         self, engine, metadata
     ):
@@ -78,6 +90,25 @@ class TestDDLCompilation:
         assert any("CHECK" in message for message in messages)
         assert "UNIQUE" not in sql
         assert "CHECK" not in sql
+
+    def test_create_table_deduplicates_unique_warning_for_same_column(
+        self, engine, metadata
+    ):
+        users = Table(
+            "users",
+            metadata,
+            Column("id", Integer, primary_key=True),
+            Column("email", String, unique=True),
+            UniqueConstraint("email", name="uq_users_email"),
+        )
+
+        with pytest.warns(UserWarning) as captured:
+            str(CreateTable(users).compile(dialect=engine.dialect)).strip()
+
+        unique_messages = [
+            str(item.message) for item in captured if "UNIQUE" in str(item.message)
+        ]
+        assert len(unique_messages) == 1
 
     def test_drop_table_sql(self, engine, users_table):
         drop = DropTable(users_table)

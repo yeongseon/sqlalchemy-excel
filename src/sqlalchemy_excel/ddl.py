@@ -18,6 +18,42 @@ from sqlalchemy.sql import compiler
 class ExcelDDLCompiler(compiler.DDLCompiler):
     """Compiles DDL statements for excel-dbapi."""
 
+    @staticmethod
+    def _warn_unsupported_constraints(
+        column: Any,
+        context_msg: str,
+        seen_unique: set[tuple[str, ...]],
+        seen_check: set[str],
+    ) -> None:
+        if column.unique is True:
+            key = (column.name,)
+            if key not in seen_unique:
+                warnings.warn(
+                    f"Excel dialect does not enforce UNIQUE constraints ({context_msg})",
+                    stacklevel=2,
+                )
+                seen_unique.add(key)
+
+        for constraint in column.constraints:
+            if isinstance(constraint, UniqueConstraint):
+                unique_key = tuple(col.name for col in constraint.columns) or (
+                    column.name,
+                )
+                if unique_key not in seen_unique:
+                    warnings.warn(
+                        f"Excel dialect does not enforce UNIQUE constraints ({context_msg})",
+                        stacklevel=2,
+                    )
+                    seen_unique.add(unique_key)
+            if isinstance(constraint, CheckConstraint):
+                check_key = str(constraint.sqltext)
+                if check_key not in seen_check:
+                    warnings.warn(
+                        f"Excel dialect does not enforce CHECK constraints ({context_msg})",
+                        stacklevel=2,
+                    )
+                    seen_check.add(check_key)
+
     def _format_alter_table_name(self, operation: Any) -> str:
         schema = getattr(operation, "schema", None)
         if schema is not None:
@@ -48,34 +84,49 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
 
         columns = []
         pk_columns = {col.name for col in table.primary_key.columns}
+        pk_columns_ordered = [
+            self.preparer.format_column(col) for col in table.primary_key.columns
+        ]
         inline_pk = len(pk_columns) == 1
+        seen_unique: set[tuple[str, ...]] = set()
+        seen_check: set[str] = set()
         for col in table.columns:
             col_name = self.preparer.format_column(col)
             col_type = self.dialect.type_compiler.process(col.type)
             constraints: list[str] = []
-            if col.nullable is False:
+            if col.nullable is False and col.name not in pk_columns:
                 constraints.append("NOT NULL")
             if inline_pk and col.name in pk_columns:
                 constraints.append("PRIMARY KEY")
-            if col.unique is True:
-                warnings.warn(
-                    "Excel dialect does not enforce UNIQUE constraints",
-                    stacklevel=3,
-                )
+            self._warn_unsupported_constraints(
+                col,
+                context_msg="CREATE TABLE",
+                seen_unique=seen_unique,
+                seen_check=seen_check,
+            )
             suffix = f" {' '.join(constraints)}" if constraints else ""
             columns.append(f"{col_name} {col_type}{suffix}")
 
+        if len(pk_columns_ordered) > 1:
+            columns.append(f"PRIMARY KEY ({', '.join(pk_columns_ordered)})")
+
         for constraint in table.constraints:
             if isinstance(constraint, UniqueConstraint):
-                warnings.warn(
-                    "Excel dialect does not enforce UNIQUE constraints",
-                    stacklevel=3,
-                )
+                unique_key = tuple(col.name for col in constraint.columns)
+                if unique_key not in seen_unique:
+                    warnings.warn(
+                        "Excel dialect does not enforce UNIQUE constraints (CREATE TABLE)",
+                        stacklevel=2,
+                    )
+                    seen_unique.add(unique_key)
             if isinstance(constraint, CheckConstraint):
-                warnings.warn(
-                    "Excel dialect does not enforce CHECK constraints",
-                    stacklevel=3,
-                )
+                check_key = str(constraint.sqltext)
+                if check_key not in seen_check:
+                    warnings.warn(
+                        "Excel dialect does not enforce CHECK constraints (CREATE TABLE)",
+                        stacklevel=2,
+                    )
+                    seen_check.add(check_key)
 
         return f"CREATE TABLE {table_name} ({', '.join(columns)})"
 
@@ -94,10 +145,16 @@ class ExcelDDLCompiler(compiler.DDLCompiler):
         col_name = self.preparer.format_column(column)
         col_type = self.dialect.type_compiler.process(column.type)
         constraints: list[str] = []
-        if column.nullable is False:
+        if column.nullable is False and column.primary_key is not True:
             constraints.append("NOT NULL")
         if column.primary_key is True:
             constraints.append("PRIMARY KEY")
+        self._warn_unsupported_constraints(
+            column,
+            context_msg="ALTER TABLE ADD COLUMN",
+            seen_unique=set(),
+            seen_check=set(),
+        )
         suffix = f" {' '.join(constraints)}" if constraints else ""
         return f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}{suffix}"
 

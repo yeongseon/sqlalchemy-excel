@@ -97,6 +97,12 @@ class TestGetColumns:
     def test_real_type_name_maps_to_float(self):
         assert isinstance(_sa_type_from_name("REAL"), Float)
 
+    def test_decimal_type_name_maps_to_float(self):
+        assert isinstance(_sa_type_from_name("DECIMAL"), Float)
+
+    def test_double_precision_type_name_maps_to_float(self):
+        assert isinstance(_sa_type_from_name("DOUBLE PRECISION"), Float)
+
 
 class TestGetPKConstraint:
     """Test get_pk_constraint — from metadata sheet."""

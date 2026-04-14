@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
 
+from sqlalchemy.dialects import registry
+
 from .dialect import ExcelDialect, ExcelGraphDialect
 from .dml import Insert, insert
+
+registry.register("excel", "sqlalchemy_excel.dialect", "ExcelDialect")
+registry.register("excel.graph", "sqlalchemy_excel.dialect", "ExcelGraphDialect")
 
 try:
     __version__ = version("sqlalchemy-excel")

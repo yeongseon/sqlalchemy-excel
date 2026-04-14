@@ -302,6 +302,9 @@ SQLAlchemy's inspector API works with Excel files:
 - Stale metadata for deleted worksheets is automatically cleaned up.
 - Raw DDL via `text()` / `exec_driver_sql()` keeps metadata synchronized for
   `CREATE TABLE`, `ALTER TABLE`, and `DROP TABLE`.
+- Table-level composite `PRIMARY KEY (...)` declarations are reflected.
+- Raw numeric declarations `FLOAT`, `REAL`, `DECIMAL`, `NUMERIC`, `DOUBLE`,
+  and `DOUBLE PRECISION` are reflected as SQLAlchemy `Float`.
 
 ```python
 from sqlalchemy import create_engine, inspect
@@ -331,7 +334,7 @@ sqlalchemy-excel maps SQLAlchemy types to Excel storage types:
 |-----------------|---------------|-------|
 | `String`, `Text`, `VARCHAR`, `CHAR` | TEXT | All string types → TEXT |
 | `Integer`, `SmallInteger`, `BigInteger` | INTEGER | All integer types → INTEGER |
-| `Float`, `Numeric`, `Decimal` | FLOAT | All numeric types → FLOAT |
+| `Float`, `Numeric`, `Decimal`, `DOUBLE`, `DOUBLE PRECISION` | FLOAT | Reflected as SQLAlchemy `Float` |
 | `Boolean` | BOOLEAN | Stored as boolean |
 | `Date` | DATE | Date without time |
 | `DateTime`, `TIMESTAMP` | DATETIME | Date with time |
@@ -353,7 +356,7 @@ sqlalchemy-excel has some limitations due to the nature of Excel as a database:
 - **ORM relationship limits**: Lazy one-to-many relationship loading can return empty collections; use eager loading (`joinedload`) for reliable one-to-many reads.
 - **Many-to-many loading is unsupported**: Association table persistence works, but relationship loader SQL for many-to-many is not fully supported.
 - **No foreign keys or indexes**: Excel has no concept of these.
-- **UNIQUE/CHECK are not enforced**: They are accepted for SQLAlchemy compatibility, ignored by the backend, and compile-time warnings are emitted.
+- **UNIQUE/CHECK are not enforced**: They are accepted for SQLAlchemy compatibility, ignored by the backend, and compile-time warnings are emitted for `CREATE TABLE` and `ALTER TABLE ... ADD COLUMN`.
 - **Identifier restrictions**: Table and column names must match `[A-Za-z_][A-Za-z0-9_]*`.
 - **No concurrent writes**: Use a single-writer model.
 - **Rollback**: Partial support — works with the openpyxl backend when `autocommit=False` (snapshot/restore semantics). The Graph API backend treats rollback as a no-op.

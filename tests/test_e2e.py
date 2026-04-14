@@ -3444,6 +3444,47 @@ def test_e2e_raw_create_table_reflects_declared_schema(tmp_path) -> None:
     engine.dispose()
 
 
+def test_e2e_raw_create_table_reflects_table_level_composite_primary_key(
+    tmp_path,
+) -> None:
+    engine = _engine_for(tmp_path)
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "CREATE TABLE memberships (user_id INTEGER, group_id INTEGER, PRIMARY KEY (user_id, group_id))"
+        )
+
+    inspector = inspect(engine)
+    columns = inspector.get_columns("memberships")
+    assert [column["name"] for column in columns] == ["user_id", "group_id"]
+    assert inspector.get_pk_constraint("memberships")["constrained_columns"] == [
+        "user_id",
+        "group_id",
+    ]
+
+    engine.dispose()
+
+
+def test_e2e_raw_create_table_numeric_aliases_reflect_as_float(tmp_path) -> None:
+    engine = _engine_for(tmp_path)
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "CREATE TABLE metrics (x DECIMAL, y NUMERIC, z DOUBLE, w DOUBLE PRECISION)"
+        )
+
+    inspector = inspect(engine)
+    columns = {
+        column["name"]: column["type"] for column in inspector.get_columns("metrics")
+    }
+    assert isinstance(columns["x"], sa.Float)
+    assert isinstance(columns["y"], sa.Float)
+    assert isinstance(columns["z"], sa.Float)
+    assert isinstance(columns["w"], sa.Float)
+
+    engine.dispose()
+
+
 def test_e2e_raw_drop_table_removes_metadata(tmp_path) -> None:
     engine = _engine_for(tmp_path)
 

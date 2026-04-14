@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.dialects import registry
 from sqlalchemy.engine import make_url
+
+import sqlalchemy_excel  # noqa: F401
+
+if TYPE_CHECKING:
+    import httpx as httpx_types
 
 httpx = pytest.importorskip("httpx")
 
@@ -14,7 +21,7 @@ httpx = pytest.importorskip("httpx")
 # ---------------------------------------------------------------------------
 
 
-def _graph_handler(request: httpx.Request) -> httpx.Response:
+def _graph_handler(request: httpx_types.Request) -> httpx_types.Response:
     """Stateless mock handler for read-only Graph API tests."""
     path = request.url.path
     method = request.method
