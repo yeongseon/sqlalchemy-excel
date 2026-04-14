@@ -41,10 +41,10 @@ Before writing any code, understand the dialect's capabilities and limits:
 | CTEs | ❌ |
 | UNION / UNION ALL / INTERSECT / EXCEPT | ✅ |
 | **Window functions (OVER)** | ❌ |
-| **ALTER TABLE** | ❌ |
+| **ALTER TABLE** | ✅ (ADD/DROP/RENAME COLUMN) |
 | **Foreign keys / indexes** | ❌ |
 | **Concurrent writes** | ❌ |
-| **Session.rollback()** | No-op (data persists) |
+| **Session.rollback()** | Partial (openpyxl with autocommit=False; graph: no-op) |
 
 If you need any of the ❌ features, use SQLite, PostgreSQL, or another full-featured database.
 

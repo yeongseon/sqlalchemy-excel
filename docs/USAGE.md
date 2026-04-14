@@ -342,10 +342,10 @@ sqlalchemy-excel has some limitations due to the nature of Excel as a database:
 - **Non-correlated subqueries only**: Subqueries supported in `WHERE ... IN (SELECT ...)` for SELECT, UPDATE, and DELETE. No correlated or nested subqueries.
 - **No CTEs**: CTE queries are not supported.
 - **No window functions**: `OVER` clause raises `CompileError`.
-- **No ALTER TABLE**: Cannot modify table structure after creation.
+- **ALTER TABLE**: Supports `ADD COLUMN`, `DROP COLUMN`, and `RENAME COLUMN` via raw SQL through the driver.
 - **No foreign keys or indexes**: Excel has no concept of these.
 - **No concurrent writes**: Use a single-writer model.
-- **Rollback is a no-op**: `Session.rollback()` does nothing — the underlying driver's rollback only works at the DB-API connection level with `autocommit=False`.
+- **Rollback**: Partial support — works with the openpyxl backend when `autocommit=False` (snapshot/restore semantics). The Graph API backend treats rollback as a no-op.
 
 ## Security
 

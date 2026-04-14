@@ -383,11 +383,13 @@ class ExcelCompiler(compiler.SQLCompiler):
             and not join.full
             and not join.isouter
         ):
+            # Intentional cartesian product -- suppress from_linter to
+            # avoid SAWarning about missing join conditions.
             left = str(
                 join.left._compiler_dispatch(
                     self,
                     asfrom=True,
-                    from_linter=from_linter,
+                    from_linter=None,
                     **kwargs,
                 )
             )
@@ -395,7 +397,7 @@ class ExcelCompiler(compiler.SQLCompiler):
                 join.right._compiler_dispatch(
                     self,
                     asfrom=True,
-                    from_linter=from_linter,
+                    from_linter=None,
                     **kwargs,
                 )
             )
