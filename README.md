@@ -70,13 +70,16 @@ from sqlalchemy.orm import DeclarativeBase, Session, Mapped, mapped_column
 
 engine = create_engine("excel:///data.xlsx")
 
+
 class Base(DeclarativeBase):
     pass
+
 
 class User(Base):
     __tablename__ = "Sheet1"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column()
+
 
 Base.metadata.create_all(engine)
 
@@ -134,14 +137,17 @@ from sqlalchemy.orm import DeclarativeBase, Session, Mapped, mapped_column
 
 engine = create_engine("excel:///data.xlsx")
 
+
 class Base(DeclarativeBase):
     pass
+
 
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column()
     age: Mapped[int] = mapped_column()
+
 
 Base.metadata.create_all(engine)
 ```

@@ -2,6 +2,27 @@
 
 We welcome contributions to the `sqlalchemy-excel` project.
 
+## Issue Scope
+
+- Explain the problem, proposed work, acceptance criteria, and priority using
+  verified evidence and user impact in this repository.
+- Apply reusable ideas to this repository's actual code, configuration, and
+  conventions. Another project's policy or implementation is not evidence that
+  the same requirement applies here.
+- Remove copied project names, issue links, process labels, and release
+  assumptions that are unrelated to the requested work.
+- Keep relevant technical evidence and source attribution, including actual
+  dependencies, integrations, upstream defects, and official documentation.
+  Explain the relationship and the work owned by this repository. Apply the
+  same local-evidence requirement to explicitly requested comparisons.
+- Before creating or editing an issue, search for duplicates and review every
+  project name and repository link in the title and body. The issue must be
+  understandable without following an unrelated project's issue or policy.
+- After saving, fetch the issue again and verify the saved title, body, and
+  labels before reporting completion. Apply these checks to issues created
+  through the API or CLI as well as through the issue forms.
+
+
 ## Branch Strategy
 
 Use GitHub Flow and branch from `main`.
