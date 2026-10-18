@@ -45,9 +45,7 @@ Supported boolean query parameters:
 ```python
 from sqlalchemy import create_engine
 
-engine = create_engine(
-    "excel:///data.xlsx?data_only=true&sanitize_formulas=true"
-)
+engine = create_engine("excel:///data.xlsx?data_only=true&sanitize_formulas=true")
 
 engine = create_engine(
     "excel:///data.xlsx?create=false&file_locking=true&autocommit=false"
@@ -72,14 +70,17 @@ from sqlalchemy.orm import DeclarativeBase, Session, Mapped, mapped_column
 
 engine = create_engine("excel:///data.xlsx")
 
+
 class Base(DeclarativeBase):
     pass
+
 
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column()
     age: Mapped[int] = mapped_column()
+
 
 # Create the table (sheet) if it doesn't exist
 Base.metadata.create_all(engine)
@@ -406,13 +407,10 @@ with Session(engine) as session:
 # ✅ GOOD: Core text() with bound parameters
 with engine.connect() as conn:
     result = conn.execute(
-        text("SELECT * FROM users WHERE name = :name"),
-        {"name": user_input}
+        text("SELECT * FROM users WHERE name = :name"), {"name": user_input}
     )
 
 # ❌ BAD: String interpolation (vulnerable to SQL injection)
 with engine.connect() as conn:
-    result = conn.execute(
-        text(f"SELECT * FROM users WHERE name = '{user_input}'")
-    )
+    result = conn.execute(text(f"SELECT * FROM users WHERE name = '{user_input}'"))
 ```
